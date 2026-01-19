@@ -1,0 +1,1182 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2018-05-01/subscriptionDeploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.39.26.7824",
+      "templateHash": "5890462918355267648"
+    }
+  },
+  "parameters": {
+    "environment": {
+      "type": "string",
+      "defaultValue": "dev",
+      "metadata": {
+        "description": "The environment name (dev, test, prod)"
+      }
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "eastus",
+      "metadata": {
+        "description": "The Azure region for all resources"
+      }
+    },
+    "projectName": {
+      "type": "string",
+      "defaultValue": "aime",
+      "metadata": {
+        "description": "The base project name"
+      }
+    },
+    "storageSku": {
+      "type": "string",
+      "defaultValue": "Standard_LRS",
+      "allowedValues": [
+        "Standard_LRS",
+        "Standard_GRS",
+        "Standard_ZRS"
+      ],
+      "metadata": {
+        "description": "Storage Account SKU"
+      }
+    },
+    "stateTtlSeconds": {
+      "type": "int",
+      "defaultValue": 604800,
+      "metadata": {
+        "description": "Cosmos DB State container TTL in seconds (7 days)"
+      }
+    },
+    "auditTtlSeconds": {
+      "type": "int",
+      "defaultValue": 15552000,
+      "metadata": {
+        "description": "Cosmos DB Audit container TTL in seconds (180 days)"
+      }
+    },
+    "searchSku": {
+      "type": "string",
+      "defaultValue": "basic",
+      "allowedValues": [
+        "free",
+        "basic",
+        "standard",
+        "standard2",
+        "standard3"
+      ],
+      "metadata": {
+        "description": "Azure AI Search SKU"
+      }
+    },
+    "serviceBusSku": {
+      "type": "string",
+      "defaultValue": "Standard",
+      "allowedValues": [
+        "Basic",
+        "Standard",
+        "Premium"
+      ],
+      "metadata": {
+        "description": "Service Bus SKU"
+      }
+    },
+    "uniqueSuffix": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Unique suffix for globally unique resources (leave empty to auto-generate based on subscription and resource group)"
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Resources/resourceGroups",
+      "apiVersion": "2023-07-01",
+      "name": "[format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))]",
+      "location": "[parameters('location')]",
+      "tags": {
+        "environment": "[parameters('environment')]",
+        "project": "[parameters('projectName')]",
+        "managedBy": "bicep"
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "core-deployment",
+      "resourceGroup": "[format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "environment": {
+            "value": "[parameters('environment')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "projectName": {
+            "value": "[parameters('projectName')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "12874890425785675080"
+            }
+          },
+          "parameters": {
+            "environment": {
+              "type": "string",
+              "defaultValue": "dev",
+              "metadata": {
+                "description": "The environment name (dev, test, prod)"
+              }
+            },
+            "location": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().location]",
+              "metadata": {
+                "description": "The Azure region for resource deployment"
+              }
+            },
+            "projectName": {
+              "type": "string",
+              "defaultValue": "ai-metadata-enricher",
+              "metadata": {
+                "description": "The base name for the project"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {
+                "environment": "[parameters('environment')]",
+                "project": "[parameters('projectName')]",
+                "managedBy": "bicep"
+              },
+              "metadata": {
+                "description": "Tags to apply to all resources"
+              }
+            }
+          },
+          "resources": [],
+          "outputs": {
+            "resourcePrefix": {
+              "type": "string",
+              "metadata": {
+                "description": "Standardized resource name prefix"
+              },
+              "value": "[format('{0}-{1}', parameters('projectName'), parameters('environment'))]"
+            },
+            "resourceLocation": {
+              "type": "string",
+              "metadata": {
+                "description": "The location for all resources"
+              },
+              "value": "[parameters('location')]"
+            },
+            "resourceTags": {
+              "type": "object",
+              "metadata": {
+                "description": "Standard tags for all resources"
+              },
+              "value": "[parameters('tags')]"
+            },
+            "environmentName": {
+              "type": "string",
+              "metadata": {
+                "description": "The environment name"
+              },
+              "value": "[parameters('environment')]"
+            },
+            "projectIdentifier": {
+              "type": "string",
+              "metadata": {
+                "description": "The project name"
+              },
+              "value": "[parameters('projectName')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', format('rg-{0}-{1}', parameters('projectName'), parameters('environment')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "storage-deployment",
+      "resourceGroup": "[format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "resourcePrefix": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))), 'Microsoft.Resources/deployments', 'core-deployment'), '2025-04-01').outputs.resourcePrefix.value]"
+          },
+          "location": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))), 'Microsoft.Resources/deployments', 'core-deployment'), '2025-04-01').outputs.resourceLocation.value]"
+          },
+          "tags": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))), 'Microsoft.Resources/deployments', 'core-deployment'), '2025-04-01').outputs.resourceTags.value]"
+          },
+          "storageSku": {
+            "value": "[parameters('storageSku')]"
+          },
+          "uniqueSuffix": {
+            "value": "[parameters('uniqueSuffix')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "2571081667500136969"
+            }
+          },
+          "parameters": {
+            "resourcePrefix": {
+              "type": "string",
+              "metadata": {
+                "description": "The resource name prefix"
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "The Azure region for resources"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "metadata": {
+                "description": "Tags to apply to resources"
+              }
+            },
+            "storageSku": {
+              "type": "string",
+              "defaultValue": "Standard_LRS",
+              "allowedValues": [
+                "Standard_LRS",
+                "Standard_GRS",
+                "Standard_ZRS"
+              ],
+              "metadata": {
+                "description": "Storage Account SKU"
+              }
+            },
+            "minimumTlsVersion": {
+              "type": "string",
+              "defaultValue": "TLS1_2",
+              "metadata": {
+                "description": "Minimum TLS version"
+              }
+            },
+            "uniqueSuffix": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Unique suffix for globally unique resources (leave empty for auto-generated)"
+              }
+            }
+          },
+          "variables": {
+            "storageAccountName": "[if(equals(parameters('uniqueSuffix'), ''), take(format('{0}st{1}', replace(parameters('resourcePrefix'), '-', ''), uniqueString(parameters('resourcePrefix'))), 24), take(format('{0}st{1}', replace(parameters('resourcePrefix'), '-', ''), parameters('uniqueSuffix')), 24))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Storage/storageAccounts",
+              "apiVersion": "2023-01-01",
+              "name": "[variables('storageAccountName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "sku": {
+                "name": "[parameters('storageSku')]"
+              },
+              "kind": "StorageV2",
+              "identity": {
+                "type": "SystemAssigned"
+              },
+              "properties": {
+                "accessTier": "Hot",
+                "supportsHttpsTrafficOnly": true,
+                "minimumTlsVersion": "[parameters('minimumTlsVersion')]",
+                "allowBlobPublicAccess": false,
+                "publicNetworkAccess": "Enabled",
+                "networkAcls": {
+                  "defaultAction": "Allow",
+                  "bypass": "AzureServices"
+                },
+                "encryption": {
+                  "services": {
+                    "blob": {
+                      "enabled": true
+                    }
+                  },
+                  "keySource": "Microsoft.Storage"
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Storage/storageAccounts/blobServices",
+              "apiVersion": "2023-01-01",
+              "name": "[format('{0}/{1}', variables('storageAccountName'), 'default')]",
+              "properties": {
+                "deleteRetentionPolicy": {
+                  "enabled": true,
+                  "days": 7
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+              "apiVersion": "2023-01-01",
+              "name": "[format('{0}/{1}/{2}', variables('storageAccountName'), 'default', 'synergy')]",
+              "properties": {
+                "publicAccess": "None"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts/blobServices', variables('storageAccountName'), 'default')]"
+              ]
+            },
+            {
+              "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+              "apiVersion": "2023-01-01",
+              "name": "[format('{0}/{1}/{2}', variables('storageAccountName'), 'default', 'zipline')]",
+              "properties": {
+                "publicAccess": "None"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts/blobServices', variables('storageAccountName'), 'default')]"
+              ]
+            },
+            {
+              "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+              "apiVersion": "2023-01-01",
+              "name": "[format('{0}/{1}/{2}', variables('storageAccountName'), 'default', 'documentation')]",
+              "properties": {
+                "publicAccess": "None"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts/blobServices', variables('storageAccountName'), 'default')]"
+              ]
+            },
+            {
+              "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+              "apiVersion": "2023-01-01",
+              "name": "[format('{0}/{1}/{2}', variables('storageAccountName'), 'default', 'schemas')]",
+              "properties": {
+                "publicAccess": "None"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts/blobServices', variables('storageAccountName'), 'default')]"
+              ]
+            }
+          ],
+          "outputs": {
+            "storageAccountId": {
+              "type": "string",
+              "metadata": {
+                "description": "Storage account resource ID"
+              },
+              "value": "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]"
+            },
+            "storageAccountName": {
+              "type": "string",
+              "metadata": {
+                "description": "Storage account name"
+              },
+              "value": "[variables('storageAccountName')]"
+            },
+            "blobEndpoint": {
+              "type": "string",
+              "metadata": {
+                "description": "Storage account primary endpoint"
+              },
+              "value": "[reference(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2023-01-01').primaryEndpoints.blob]"
+            },
+            "managedIdentityPrincipalId": {
+              "type": "string",
+              "metadata": {
+                "description": "System-assigned Managed Identity principal ID"
+              },
+              "value": "[reference(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2023-01-01', 'full').identity.principalId]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))), 'Microsoft.Resources/deployments', 'core-deployment')]",
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', format('rg-{0}-{1}', parameters('projectName'), parameters('environment')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "cosmos-deployment",
+      "resourceGroup": "[format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "resourcePrefix": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))), 'Microsoft.Resources/deployments', 'core-deployment'), '2025-04-01').outputs.resourcePrefix.value]"
+          },
+          "location": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))), 'Microsoft.Resources/deployments', 'core-deployment'), '2025-04-01').outputs.resourceLocation.value]"
+          },
+          "tags": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))), 'Microsoft.Resources/deployments', 'core-deployment'), '2025-04-01').outputs.resourceTags.value]"
+          },
+          "stateTtlSeconds": {
+            "value": "[parameters('stateTtlSeconds')]"
+          },
+          "auditTtlSeconds": {
+            "value": "[parameters('auditTtlSeconds')]"
+          },
+          "uniqueSuffix": {
+            "value": "[parameters('uniqueSuffix')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "7029532202024448825"
+            }
+          },
+          "parameters": {
+            "resourcePrefix": {
+              "type": "string",
+              "metadata": {
+                "description": "The resource name prefix"
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "The Azure region for resources"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "metadata": {
+                "description": "Tags to apply to resources"
+              }
+            },
+            "cosmosAccountName": {
+              "type": "string",
+              "defaultValue": "[format('{0}-cosmos', parameters('resourcePrefix'))]",
+              "metadata": {
+                "description": "Cosmos DB account name"
+              }
+            },
+            "uniqueSuffix": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Unique suffix for globally unique resources (leave empty for auto-generated)"
+              }
+            },
+            "databaseName": {
+              "type": "string",
+              "defaultValue": "enricher-db",
+              "metadata": {
+                "description": "Database name"
+              }
+            },
+            "partitionKeyPath": {
+              "type": "string",
+              "defaultValue": "/entityType",
+              "metadata": {
+                "description": "Partition key path (consistent across containers)"
+              }
+            },
+            "stateTtlSeconds": {
+              "type": "int",
+              "defaultValue": 604800,
+              "metadata": {
+                "description": "State container TTL in seconds (7 days = 604800 seconds)"
+              }
+            },
+            "auditTtlSeconds": {
+              "type": "int",
+              "defaultValue": 15552000,
+              "metadata": {
+                "description": "Audit container TTL in seconds (180 days = 15552000 seconds)"
+              }
+            }
+          },
+          "variables": {
+            "cosmosDbAccountName": "[if(equals(parameters('uniqueSuffix'), ''), format('{0}-{1}', parameters('cosmosAccountName'), uniqueString(parameters('resourcePrefix'))), format('{0}-{1}', parameters('cosmosAccountName'), parameters('uniqueSuffix')))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.DocumentDB/databaseAccounts",
+              "apiVersion": "2023-11-15",
+              "name": "[take(variables('cosmosDbAccountName'), 44)]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "kind": "GlobalDocumentDB",
+              "identity": {
+                "type": "SystemAssigned"
+              },
+              "properties": {
+                "databaseAccountOfferType": "Standard",
+                "consistencyPolicy": {
+                  "defaultConsistencyLevel": "Session"
+                },
+                "locations": [
+                  {
+                    "locationName": "[parameters('location')]",
+                    "failoverPriority": 0,
+                    "isZoneRedundant": false
+                  }
+                ],
+                "publicNetworkAccess": "Enabled",
+                "enableAutomaticFailover": false,
+                "enableFreeTier": false,
+                "capabilities": [
+                  {
+                    "name": "EnableServerless"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases",
+              "apiVersion": "2023-11-15",
+              "name": "[format('{0}/{1}', take(variables('cosmosDbAccountName'), 44), parameters('databaseName'))]",
+              "properties": {
+                "resource": {
+                  "id": "[parameters('databaseName')]"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts', take(variables('cosmosDbAccountName'), 44))]"
+              ]
+            },
+            {
+              "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+              "apiVersion": "2023-11-15",
+              "name": "[format('{0}/{1}/{2}', take(variables('cosmosDbAccountName'), 44), parameters('databaseName'), 'state')]",
+              "properties": {
+                "resource": {
+                  "id": "state",
+                  "partitionKey": {
+                    "paths": [
+                      "[parameters('partitionKeyPath')]"
+                    ],
+                    "kind": "Hash"
+                  },
+                  "defaultTtl": "[parameters('stateTtlSeconds')]",
+                  "indexingPolicy": {
+                    "indexingMode": "consistent",
+                    "automatic": true,
+                    "includedPaths": [
+                      {
+                        "path": "/*"
+                      }
+                    ],
+                    "excludedPaths": [
+                      {
+                        "path": "/\"_etag\"/?"
+                      }
+                    ]
+                  }
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', take(variables('cosmosDbAccountName'), 44), parameters('databaseName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+              "apiVersion": "2023-11-15",
+              "name": "[format('{0}/{1}/{2}', take(variables('cosmosDbAccountName'), 44), parameters('databaseName'), 'audit')]",
+              "properties": {
+                "resource": {
+                  "id": "audit",
+                  "partitionKey": {
+                    "paths": [
+                      "[parameters('partitionKeyPath')]"
+                    ],
+                    "kind": "Hash"
+                  },
+                  "defaultTtl": "[parameters('auditTtlSeconds')]",
+                  "indexingPolicy": {
+                    "indexingMode": "consistent",
+                    "automatic": true,
+                    "includedPaths": [
+                      {
+                        "path": "/*"
+                      }
+                    ],
+                    "excludedPaths": [
+                      {
+                        "path": "/\"_etag\"/?"
+                      }
+                    ]
+                  }
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', take(variables('cosmosDbAccountName'), 44), parameters('databaseName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "cosmosAccountId": {
+              "type": "string",
+              "metadata": {
+                "description": "Cosmos DB account resource ID"
+              },
+              "value": "[resourceId('Microsoft.DocumentDB/databaseAccounts', take(variables('cosmosDbAccountName'), 44))]"
+            },
+            "cosmosAccountName": {
+              "type": "string",
+              "metadata": {
+                "description": "Cosmos DB account name"
+              },
+              "value": "[take(variables('cosmosDbAccountName'), 44)]"
+            },
+            "cosmosEndpoint": {
+              "type": "string",
+              "metadata": {
+                "description": "Cosmos DB endpoint"
+              },
+              "value": "[reference(resourceId('Microsoft.DocumentDB/databaseAccounts', take(variables('cosmosDbAccountName'), 44)), '2023-11-15').documentEndpoint]"
+            },
+            "databaseName": {
+              "type": "string",
+              "metadata": {
+                "description": "Database name"
+              },
+              "value": "[parameters('databaseName')]"
+            },
+            "managedIdentityPrincipalId": {
+              "type": "string",
+              "metadata": {
+                "description": "System-assigned Managed Identity principal ID"
+              },
+              "value": "[reference(resourceId('Microsoft.DocumentDB/databaseAccounts', take(variables('cosmosDbAccountName'), 44)), '2023-11-15', 'full').identity.principalId]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))), 'Microsoft.Resources/deployments', 'core-deployment')]",
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', format('rg-{0}-{1}', parameters('projectName'), parameters('environment')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "search-deployment",
+      "resourceGroup": "[format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "resourcePrefix": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))), 'Microsoft.Resources/deployments', 'core-deployment'), '2025-04-01').outputs.resourcePrefix.value]"
+          },
+          "location": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))), 'Microsoft.Resources/deployments', 'core-deployment'), '2025-04-01').outputs.resourceLocation.value]"
+          },
+          "tags": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))), 'Microsoft.Resources/deployments', 'core-deployment'), '2025-04-01').outputs.resourceTags.value]"
+          },
+          "searchSku": {
+            "value": "[parameters('searchSku')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "17334968287050910539"
+            }
+          },
+          "parameters": {
+            "resourcePrefix": {
+              "type": "string",
+              "metadata": {
+                "description": "The resource name prefix"
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "The Azure region for resources"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "metadata": {
+                "description": "Tags to apply to resources"
+              }
+            },
+            "searchSku": {
+              "type": "string",
+              "defaultValue": "basic",
+              "allowedValues": [
+                "free",
+                "basic",
+                "standard",
+                "standard2",
+                "standard3"
+              ],
+              "metadata": {
+                "description": "Search service SKU"
+              }
+            },
+            "indexName": {
+              "type": "string",
+              "defaultValue": "metadata-index",
+              "metadata": {
+                "description": "Index name"
+              }
+            }
+          },
+          "variables": {
+            "indexSchema": {
+              "name": "[parameters('indexName')]",
+              "fields": [
+                {
+                  "name": "id",
+                  "type": "Edm.String",
+                  "key": true,
+                  "searchable": false,
+                  "filterable": false,
+                  "sortable": false,
+                  "facetable": false
+                },
+                {
+                  "name": "entityType",
+                  "type": "Edm.String",
+                  "searchable": false,
+                  "filterable": true,
+                  "sortable": true,
+                  "facetable": true
+                },
+                {
+                  "name": "title",
+                  "type": "Edm.String",
+                  "searchable": true,
+                  "filterable": true,
+                  "sortable": true,
+                  "facetable": false,
+                  "analyzer": "standard.lucene"
+                },
+                {
+                  "name": "description",
+                  "type": "Edm.String",
+                  "searchable": true,
+                  "filterable": false,
+                  "sortable": false,
+                  "facetable": false,
+                  "analyzer": "standard.lucene"
+                },
+                {
+                  "name": "suggestedDescription",
+                  "type": "Edm.String",
+                  "searchable": true,
+                  "filterable": true,
+                  "sortable": false,
+                  "facetable": false,
+                  "analyzer": "standard.lucene"
+                },
+                {
+                  "name": "tags",
+                  "type": "Collection(Edm.String)",
+                  "searchable": true,
+                  "filterable": true,
+                  "sortable": false,
+                  "facetable": true
+                },
+                {
+                  "name": "createdAt",
+                  "type": "Edm.DateTimeOffset",
+                  "searchable": false,
+                  "filterable": true,
+                  "sortable": true,
+                  "facetable": false
+                },
+                {
+                  "name": "updatedAt",
+                  "type": "Edm.DateTimeOffset",
+                  "searchable": false,
+                  "filterable": true,
+                  "sortable": true,
+                  "facetable": false
+                }
+              ],
+              "scoringProfiles": [],
+              "corsOptions": {
+                "allowedOrigins": [
+                  "*"
+                ],
+                "maxAgeInSeconds": 300
+              },
+              "suggesters": [
+                {
+                  "name": "title-suggester",
+                  "searchMode": "analyzingInfixMatching",
+                  "sourceFields": [
+                    "title"
+                  ]
+                }
+              ]
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Search/searchServices",
+              "apiVersion": "2023-11-01",
+              "name": "[format('{0}-search', parameters('resourcePrefix'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "sku": {
+                "name": "[parameters('searchSku')]"
+              },
+              "identity": {
+                "type": "SystemAssigned"
+              },
+              "properties": {
+                "replicaCount": 1,
+                "partitionCount": 1,
+                "hostingMode": "default",
+                "publicNetworkAccess": "enabled",
+                "networkRuleSet": {
+                  "ipRules": []
+                },
+                "encryptionWithCmk": {
+                  "enforcement": "Unspecified"
+                }
+              }
+            }
+          ],
+          "outputs": {
+            "searchServiceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Search service resource ID"
+              },
+              "value": "[resourceId('Microsoft.Search/searchServices', format('{0}-search', parameters('resourcePrefix')))]"
+            },
+            "searchServiceName": {
+              "type": "string",
+              "metadata": {
+                "description": "Search service name"
+              },
+              "value": "[format('{0}-search', parameters('resourcePrefix'))]"
+            },
+            "searchEndpoint": {
+              "type": "string",
+              "metadata": {
+                "description": "Search service endpoint"
+              },
+              "value": "[format('https://{0}.search.windows.net', format('{0}-search', parameters('resourcePrefix')))]"
+            },
+            "managedIdentityPrincipalId": {
+              "type": "string",
+              "metadata": {
+                "description": "System-assigned Managed Identity principal ID"
+              },
+              "value": "[reference(resourceId('Microsoft.Search/searchServices', format('{0}-search', parameters('resourcePrefix'))), '2023-11-01', 'full').identity.principalId]"
+            },
+            "indexSchemaDefinition": {
+              "type": "object",
+              "metadata": {
+                "description": "Index schema (for documentation and manual creation)"
+              },
+              "value": "[variables('indexSchema')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))), 'Microsoft.Resources/deployments', 'core-deployment')]",
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', format('rg-{0}-{1}', parameters('projectName'), parameters('environment')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "messaging-deployment",
+      "resourceGroup": "[format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "resourcePrefix": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))), 'Microsoft.Resources/deployments', 'core-deployment'), '2025-04-01').outputs.resourcePrefix.value]"
+          },
+          "location": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))), 'Microsoft.Resources/deployments', 'core-deployment'), '2025-04-01').outputs.resourceLocation.value]"
+          },
+          "tags": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))), 'Microsoft.Resources/deployments', 'core-deployment'), '2025-04-01').outputs.resourceTags.value]"
+          },
+          "serviceBusSku": {
+            "value": "[parameters('serviceBusSku')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "13290820810923006482"
+            }
+          },
+          "parameters": {
+            "resourcePrefix": {
+              "type": "string",
+              "metadata": {
+                "description": "The resource name prefix"
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "The Azure region for resources"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "metadata": {
+                "description": "Tags to apply to resources"
+              }
+            },
+            "serviceBusSku": {
+              "type": "string",
+              "defaultValue": "Standard",
+              "allowedValues": [
+                "Basic",
+                "Standard",
+                "Premium"
+              ],
+              "metadata": {
+                "description": "Service Bus SKU"
+              }
+            },
+            "mainQueueName": {
+              "type": "string",
+              "defaultValue": "enrichment-requests",
+              "metadata": {
+                "description": "Main queue name"
+              }
+            },
+            "maxDeliveryCount": {
+              "type": "int",
+              "defaultValue": 10,
+              "metadata": {
+                "description": "Max delivery count before moving to DLQ"
+              }
+            },
+            "messageTtl": {
+              "type": "string",
+              "defaultValue": "P7D",
+              "metadata": {
+                "description": "Message time-to-live (ISO 8601 duration)"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.ServiceBus/namespaces",
+              "apiVersion": "2022-10-01-preview",
+              "name": "[format('{0}-sb', parameters('resourcePrefix'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "sku": {
+                "name": "[parameters('serviceBusSku')]",
+                "tier": "[parameters('serviceBusSku')]"
+              },
+              "identity": {
+                "type": "SystemAssigned"
+              },
+              "properties": {
+                "publicNetworkAccess": "Enabled",
+                "disableLocalAuth": false,
+                "zoneRedundant": false
+              }
+            },
+            {
+              "type": "Microsoft.ServiceBus/namespaces/queues",
+              "apiVersion": "2022-10-01-preview",
+              "name": "[format('{0}/{1}', format('{0}-sb', parameters('resourcePrefix')), parameters('mainQueueName'))]",
+              "properties": {
+                "maxDeliveryCount": "[parameters('maxDeliveryCount')]",
+                "defaultMessageTimeToLive": "[parameters('messageTtl')]",
+                "deadLetteringOnMessageExpiration": true,
+                "enableBatchedOperations": true,
+                "requiresDuplicateDetection": false,
+                "requiresSession": false,
+                "enablePartitioning": false,
+                "lockDuration": "PT5M",
+                "maxSizeInMegabytes": 1024
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ServiceBus/namespaces', format('{0}-sb', parameters('resourcePrefix')))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "serviceBusNamespaceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Service Bus namespace resource ID"
+              },
+              "value": "[resourceId('Microsoft.ServiceBus/namespaces', format('{0}-sb', parameters('resourcePrefix')))]"
+            },
+            "serviceBusNamespaceName": {
+              "type": "string",
+              "metadata": {
+                "description": "Service Bus namespace name"
+              },
+              "value": "[format('{0}-sb', parameters('resourcePrefix'))]"
+            },
+            "serviceBusEndpoint": {
+              "type": "string",
+              "metadata": {
+                "description": "Service Bus namespace endpoint"
+              },
+              "value": "[reference(resourceId('Microsoft.ServiceBus/namespaces', format('{0}-sb', parameters('resourcePrefix'))), '2022-10-01-preview').serviceBusEndpoint]"
+            },
+            "mainQueueName": {
+              "type": "string",
+              "metadata": {
+                "description": "Main queue name"
+              },
+              "value": "[parameters('mainQueueName')]"
+            },
+            "deadLetterQueuePath": {
+              "type": "string",
+              "metadata": {
+                "description": "Dead-letter queue path (auto-created by Azure)"
+              },
+              "value": "[format('{0}/$DeadLetterQueue', parameters('mainQueueName'))]"
+            },
+            "managedIdentityPrincipalId": {
+              "type": "string",
+              "metadata": {
+                "description": "System-assigned Managed Identity principal ID"
+              },
+              "value": "[reference(resourceId('Microsoft.ServiceBus/namespaces', format('{0}-sb', parameters('resourcePrefix'))), '2022-10-01-preview', 'full').identity.principalId]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))), 'Microsoft.Resources/deployments', 'core-deployment')]",
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', format('rg-{0}-{1}', parameters('projectName'), parameters('environment')))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "resourceGroupName": {
+      "type": "string",
+      "metadata": {
+        "description": "Resource group name"
+      },
+      "value": "[format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))]"
+    },
+    "storageAccountName": {
+      "type": "string",
+      "metadata": {
+        "description": "Storage account name"
+      },
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))), 'Microsoft.Resources/deployments', 'storage-deployment'), '2025-04-01').outputs.storageAccountName.value]"
+    },
+    "cosmosAccountName": {
+      "type": "string",
+      "metadata": {
+        "description": "Cosmos DB account name"
+      },
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))), 'Microsoft.Resources/deployments', 'cosmos-deployment'), '2025-04-01').outputs.cosmosAccountName.value]"
+    },
+    "cosmosEndpoint": {
+      "type": "string",
+      "metadata": {
+        "description": "Cosmos DB endpoint"
+      },
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))), 'Microsoft.Resources/deployments', 'cosmos-deployment'), '2025-04-01').outputs.cosmosEndpoint.value]"
+    },
+    "searchServiceName": {
+      "type": "string",
+      "metadata": {
+        "description": "Search service name"
+      },
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))), 'Microsoft.Resources/deployments', 'search-deployment'), '2025-04-01').outputs.searchServiceName.value]"
+    },
+    "searchEndpoint": {
+      "type": "string",
+      "metadata": {
+        "description": "Search service endpoint"
+      },
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))), 'Microsoft.Resources/deployments', 'search-deployment'), '2025-04-01').outputs.searchEndpoint.value]"
+    },
+    "serviceBusNamespaceName": {
+      "type": "string",
+      "metadata": {
+        "description": "Service Bus namespace name"
+      },
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))), 'Microsoft.Resources/deployments', 'messaging-deployment'), '2025-04-01').outputs.serviceBusNamespaceName.value]"
+    },
+    "serviceBusEndpoint": {
+      "type": "string",
+      "metadata": {
+        "description": "Service Bus endpoint"
+      },
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))), 'Microsoft.Resources/deployments', 'messaging-deployment'), '2025-04-01').outputs.serviceBusEndpoint.value]"
+    },
+    "mainQueueName": {
+      "type": "string",
+      "metadata": {
+        "description": "Main queue name"
+      },
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))), 'Microsoft.Resources/deployments', 'messaging-deployment'), '2025-04-01').outputs.mainQueueName.value]"
+    },
+    "deadLetterQueuePath": {
+      "type": "string",
+      "metadata": {
+        "description": "Dead-letter queue path"
+      },
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))), 'Microsoft.Resources/deployments', 'messaging-deployment'), '2025-04-01').outputs.deadLetterQueuePath.value]"
+    }
+  }
+}

@@ -1,0 +1,34 @@
+# Bicep
+*.bicep.json
+
+# Azure
+*.azure/
+.azure-pipelines/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Environment files
+.env
+.env.local
+
+# Terraform (not used, but good to exclude)
+*.tfstate
+*.tfstate.backup
+.terraform/
+
+# Build outputs
+bin/
+obj/
+dist/
