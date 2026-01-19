@@ -191,6 +191,254 @@ Follow the instructions in [infra/purview/README.md](infra/purview/README.md) to
 
 ---
 
+## Baseline: Naming, Tagging, and Environment Isolation
+
+**This section formalizes the naming conventions, mandatory tags, and environment isolation strategy implemented in the Bicep code. This baseline is now frozen for the MVP.**
+
+### Naming Conventions
+
+All resource names follow a standardized pattern to ensure consistency, environment isolation, and global uniqueness where required.
+
+#### General Naming Pattern
+
+**Resource Group**:
+```
+rg-${projectName}-${environment}
+```
+- Example (Dev): `rg-aime-dev`
+- Pattern defined in: [infra/main.bicep](infra/main.bicep#L63)
+
+**Resource Prefix** (used by all other resources):
+```
+${projectName}-${environment}
+```
+- Example (Dev): `aime-dev`
+- Pattern defined in: [infra/core/main.bicep](infra/core/main.bicep#L31)
+
+#### Resource-Specific Naming
+
+| Resource Type | Naming Pattern | Example (Dev) | Bicep Location |
+|---------------|----------------|---------------|----------------|
+| **Storage Account** | `${prefix}st${uniqueString}` (alphanumeric, max 24 chars) | `aimedevstxyz123` | [infra/storage/main.bicep](infra/storage/main.bicep#L40) |
+| **Cosmos DB Account** | `${prefix}-cosmos-${uniqueString}` (max 44 chars) | `aime-dev-cosmos-xyz123` | [infra/cosmos/main.bicep](infra/cosmos/main.bicep#L48) |
+| **Azure AI Search** | `${prefix}-search` | `aime-dev-search` | [infra/search/main.bicep](infra/search/main.bicep#L34) |
+| **Service Bus Namespace** | `${prefix}-sb` | `aime-dev-sb` | [infra/messaging/main.bicep](infra/messaging/main.bicep#L43) |
+
+#### Global Uniqueness Strategy
+
+For resources requiring globally unique names (Storage, Cosmos DB):
+- **Auto-generated suffix**: `uniqueString(resourcePrefix)` generates a deterministic hash
+- **Manual suffix**: Optional `uniqueSuffix` parameter for explicit control
+- Defined in: [infra/storage/main.bicep](infra/storage/main.bicep#L40), [infra/cosmos/main.bicep](infra/cosmos/main.bicep#L48)
+
+#### Naming Rules (Frozen for MVP)
+
+✅ **MANDATORY**:
+- All resource names MUST include the environment (`dev`, `test`, `prod`)
+- Naming patterns MUST be consistent across all environments
+- No hardcoded environment values in resource names
+
+❌ **PROHIBITED**:
+- Manual resource naming (must use centralized patterns)
+- Environment-specific naming logic (use parameterization)
+
+---
+
+### Mandatory Tags
+
+All resources inherit a standardized set of tags defined centrally in the `core` module.
+
+#### Tag Definition
+
+```bicep
+{
+  environment: string   // 'dev', 'test', or 'prod'
+  project: string       // 'aime' (AI Metadata Enricher)
+  managedBy: string     // 'bicep' (governance marker)
+}
+```
+
+**Defined in**: [infra/core/main.bicep](infra/core/main.bicep#L19-L22)
+
+#### Tag Purpose
+
+| Tag | Purpose | Example Value |
+|-----|---------|---------------|
+| `environment` | Identify deployment environment; enable cost tracking and RBAC policies | `dev` |
+| `project` | Group resources by project; enable cross-resource queries | `aime` |
+| `managedBy` | Indicate infrastructure is managed as code (not manually created) | `bicep` |
+
+#### Tag Propagation
+
+- Tags are defined **once** in the `core` module
+- Propagated to all downstream modules via `core.outputs.resourceTags`
+- Applied to: Resource Group, Storage Account, Cosmos DB, Azure AI Search, Service Bus
+- **No tag duplication** across modules (single source of truth)
+
+#### Tag Inheritance (Frozen for MVP)
+
+✅ **MANDATORY**:
+- All resources MUST inherit tags from `core` module
+- No module-specific tag overrides
+
+❌ **PROHIBITED**:
+- Hardcoding tags in individual modules
+- Adding new tags without updating `core` module
+
+---
+
+### Dev Environment Isolation
+
+The Dev environment is isolated from Test and Prod through dedicated resources and environment-scoped naming.
+
+#### Isolation Mechanisms
+
+1. **Dedicated Resource Group**: `rg-aime-dev`
+   - No resources shared with Test or Prod
+   - Complete isolation of Dev environment
+
+2. **Environment-Scoped Naming**: All resources include `-dev` in their names
+   - Prevents naming collisions
+   - Clear visual separation in Azure Portal
+
+3. **Parameterization**: Environment is a parameter, not hardcoded
+   - Defined in: [infra/parameters.dev.bicepparam](infra/parameters.dev.bicepparam#L18)
+   - Same Bicep code deploys all environments with different parameter files
+
+#### Test and Prod Deployment Strategy
+
+Test and Prod environments will:
+- ✅ **Reuse** the same Bicep modules (no code changes)
+- ✅ **Use** different parameter files (`parameters.test.bicepparam`, `parameters.prod.bicepparam`)
+- ✅ **Deploy** to separate resource groups (`rg-aime-test`, `rg-aime-prod`)
+
+**No structural changes required** — only parameter values differ.
+
+---
+
+### What Changes vs. What Stays Constant Across Environments
+
+#### MAY Change Between Environments
+
+The following **MAY** be adjusted via parameter files for Test/Prod:
+
+- **SKUs**: Storage redundancy (LRS → ZRS/GRS), Search tier (Basic → Standard), Service Bus tier
+- **Scaling**: Cosmos DB throughput, Search replicas/partitions
+- **Security**: Private Endpoints, VNet integration, firewall rules
+- **Quotas**: TTL values, retention policies, message limits
+- **Location**: Azure region (currently `eastus` for Dev)
+
+**Configured in**: Environment-specific `.bicepparam` files
+
+#### MUST NOT Change Between Environments
+
+The following **MUST remain constant** across all environments:
+
+- **Naming patterns**: Resource naming conventions (frozen above)
+- **Tag structure**: Tag keys and propagation logic
+- **Resource boundaries**: Same resource types in all environments
+- **Data contracts**: Cosmos DB partition key (`/entityType`), TTL structure
+- **Index schemas**: Azure AI Search index schema (frozen contract)
+- **Queue contracts**: Service Bus queue names and configuration
+
+**Enforced by**: Shared Bicep modules with parameterized values only
+
+---
+
+### Baseline Validation Procedure
+
+Before deploying to any environment, perform the following validation steps:
+
+#### 1. Template Validation
+
+```powershell
+az deployment sub validate \
+  --location eastus \
+  --template-file infra/main.bicep \
+  --parameters infra/parameters.dev.bicepparam
+```
+
+**Expected Result**: `"provisioningState": "Succeeded"`
+
+**What to verify**:
+- No syntax errors
+- All parameters resolved correctly
+- Resource dependencies valid
+
+---
+
+#### 2. What-If Preview
+
+```powershell
+az deployment sub what-if \
+  --location eastus \
+  --template-file infra/main.bicep \
+  --parameters infra/parameters.dev.bicepparam
+```
+
+**What to verify**:
+
+✅ **Naming Compliance**:
+- Resource Group: `rg-aime-dev`
+- Storage Account: `aimedevst*` (alphanumeric only)
+- Cosmos DB: `aime-dev-cosmos-*`
+- Azure AI Search: `aime-dev-search`
+- Service Bus: `aime-dev-sb`
+
+✅ **Tag Compliance**:
+- All resources have `environment: dev`
+- All resources have `project: aime`
+- All resources have `managedBy: bicep`
+
+✅ **Environment Isolation**:
+- All resource names include environment (`dev`)
+- No shared resources with other environments
+
+✅ **Resource Count**:
+- 1 Resource Group
+- 1 Storage Account + 4 Blob Containers
+- 1 Cosmos DB Account + 1 Database + 2 Containers
+- 1 Azure AI Search Service
+- 1 Service Bus Namespace + 1 Queue
+
+---
+
+#### 3. Post-Deployment Verification
+
+```powershell
+# List all resources
+az resource list --resource-group rg-aime-dev --output table
+
+# Verify tags
+az resource list --resource-group rg-aime-dev \
+  --query "[].{Name:name, Environment:tags.environment, Project:tags.project}" \
+  --output table
+```
+
+**What to verify**:
+- All resources deployed successfully
+- Naming matches expected patterns
+- Tags applied consistently
+
+---
+
+### Baseline Freeze Statement
+
+**This naming, tagging, and environment isolation baseline is now frozen for the MVP.**
+
+- **Freeze Date**: January 19, 2026
+- **Execution Plan Reference**: Phase 1 — Infrastructure Foundation (Passive Resources)
+- **Scope**: All naming conventions, mandatory tags, and environment isolation rules defined above
+
+**Changes to this baseline require**:
+- Architectural review
+- Impact analysis on existing Test/Prod environments (future)
+- Explicit approval from platform governance
+
+**Rationale**: Freezing the baseline ensures deterministic, reproducible deployments and prevents drift between environments.
+
+---
+
 ## Configuration
 
 ### Environment-Specific Parameters
