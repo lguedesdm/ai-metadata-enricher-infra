@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.39.26.7824",
-      "templateHash": "5890462918355267648"
+      "templateHash": "15887873006449569667"
     }
   },
   "parameters": {
@@ -245,7 +245,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.39.26.7824",
-              "templateHash": "2571081667500136969"
+              "templateHash": "13076347449177512996"
             }
           },
           "parameters": {
@@ -330,64 +330,6 @@
                   "keySource": "Microsoft.Storage"
                 }
               }
-            },
-            {
-              "type": "Microsoft.Storage/storageAccounts/blobServices",
-              "apiVersion": "2023-01-01",
-              "name": "[format('{0}/{1}', variables('storageAccountName'), 'default')]",
-              "properties": {
-                "deleteRetentionPolicy": {
-                  "enabled": true,
-                  "days": 7
-                }
-              },
-              "dependsOn": [
-                "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]"
-              ]
-            },
-            {
-              "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
-              "apiVersion": "2023-01-01",
-              "name": "[format('{0}/{1}/{2}', variables('storageAccountName'), 'default', 'synergy')]",
-              "properties": {
-                "publicAccess": "None"
-              },
-              "dependsOn": [
-                "[resourceId('Microsoft.Storage/storageAccounts/blobServices', variables('storageAccountName'), 'default')]"
-              ]
-            },
-            {
-              "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
-              "apiVersion": "2023-01-01",
-              "name": "[format('{0}/{1}/{2}', variables('storageAccountName'), 'default', 'zipline')]",
-              "properties": {
-                "publicAccess": "None"
-              },
-              "dependsOn": [
-                "[resourceId('Microsoft.Storage/storageAccounts/blobServices', variables('storageAccountName'), 'default')]"
-              ]
-            },
-            {
-              "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
-              "apiVersion": "2023-01-01",
-              "name": "[format('{0}/{1}/{2}', variables('storageAccountName'), 'default', 'documentation')]",
-              "properties": {
-                "publicAccess": "None"
-              },
-              "dependsOn": [
-                "[resourceId('Microsoft.Storage/storageAccounts/blobServices', variables('storageAccountName'), 'default')]"
-              ]
-            },
-            {
-              "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
-              "apiVersion": "2023-01-01",
-              "name": "[format('{0}/{1}/{2}', variables('storageAccountName'), 'default', 'schemas')]",
-              "properties": {
-                "publicAccess": "None"
-              },
-              "dependsOn": [
-                "[resourceId('Microsoft.Storage/storageAccounts/blobServices', variables('storageAccountName'), 'default')]"
-              ]
             }
           ],
           "outputs": {

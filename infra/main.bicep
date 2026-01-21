@@ -104,52 +104,49 @@ module storage 'storage/main.bicep' = {
 // =============================================================================
 // COSMOS DB MODULE
 // =============================================================================
-// Deploys Cosmos DB account, database, and containers with TTL
-
-module cosmos 'cosmos/main.bicep' = {
-  name: 'cosmos-deployment'
-  scope: resourceGroup
-  params: {
-    resourcePrefix: core.outputs.resourcePrefix
-    location: core.outputs.resourceLocation
-    tags: core.outputs.resourceTags
-    stateTtlSeconds: stateTtlSeconds
-    auditTtlSeconds: auditTtlSeconds
-    uniqueSuffix: uniqueSuffix
-  }
-}
+// BLOCKED: Pertence à task "Provision Azure Cosmos DB"
+// module cosmos 'cosmos/main.bicep' = {
+//   name: 'cosmos-deployment'
+//   scope: resourceGroup
+//   params: {
+//     resourcePrefix: core.outputs.resourcePrefix
+//     location: core.outputs.resourceLocation
+//     tags: core.outputs.resourceTags
+//     stateTtlSeconds: stateTtlSeconds
+//     auditTtlSeconds: auditTtlSeconds
+//     uniqueSuffix: uniqueSuffix
+//   }
+// }
 
 // =============================================================================
 // AZURE AI SEARCH MODULE
 // =============================================================================
-// Deploys Azure AI Search service and defines index schema
-
-module search 'search/main.bicep' = {
-  name: 'search-deployment'
-  scope: resourceGroup
-  params: {
-    resourcePrefix: core.outputs.resourcePrefix
-    location: core.outputs.resourceLocation
-    tags: core.outputs.resourceTags
-    searchSku: searchSku
-  }
-}
+// BLOCKED: Pertence à task "Provision Azure AI Search"
+// module search 'search/main.bicep' = {
+//   name: 'search-deployment'
+//   scope: resourceGroup
+//   params: {
+//     resourcePrefix: core.outputs.resourcePrefix
+//     location: core.outputs.resourceLocation
+//     tags: core.outputs.resourceTags
+//     searchSku: searchSku
+//   }
+// }
 
 // =============================================================================
 // MESSAGING MODULE
 // =============================================================================
-// Deploys Service Bus namespace and queues
-
-module messaging 'messaging/main.bicep' = {
-  name: 'messaging-deployment'
-  scope: resourceGroup
-  params: {
-    resourcePrefix: core.outputs.resourcePrefix
-    location: core.outputs.resourceLocation
-    tags: core.outputs.resourceTags
-    serviceBusSku: serviceBusSku
-  }
-}
+// BLOCKED: Pertence à task "Provision Service Bus"
+// module messaging 'messaging/main.bicep' = {
+//   name: 'messaging-deployment'
+//   scope: resourceGroup
+//   params: {
+//     resourcePrefix: core.outputs.resourcePrefix
+//     location: core.outputs.resourceLocation
+//     tags: core.outputs.resourceTags
+//     serviceBusSku: serviceBusSku
+//   }
+// }
 
 // =============================================================================
 // OUTPUTS
@@ -163,26 +160,27 @@ output resourceGroupName string = resourceGroup.name
 @description('Storage account name')
 output storageAccountName string = storage.outputs.storageAccountName
 
-@description('Cosmos DB account name')
-output cosmosAccountName string = cosmos.outputs.cosmosAccountName
+// BLOCKED: Outputs dos módulos bloqueados
+// @description('Cosmos DB account name')
+// output cosmosAccountName string = cosmos.outputs.cosmosAccountName
 
-@description('Cosmos DB endpoint')
-output cosmosEndpoint string = cosmos.outputs.cosmosEndpoint
+// @description('Cosmos DB endpoint')
+// output cosmosEndpoint string = cosmos.outputs.cosmosEndpoint
 
-@description('Search service name')
-output searchServiceName string = search.outputs.searchServiceName
+// @description('Search service name')
+// output searchServiceName string = search.outputs.searchServiceName
 
-@description('Search service endpoint')
-output searchEndpoint string = search.outputs.searchEndpoint
+// @description('Search service endpoint')
+// output searchEndpoint string = search.outputs.searchEndpoint
 
-@description('Service Bus namespace name')
-output serviceBusNamespaceName string = messaging.outputs.serviceBusNamespaceName
+// @description('Service Bus namespace name')
+// output serviceBusNamespaceName string = messaging.outputs.serviceBusNamespaceName
 
-@description('Service Bus endpoint')
-output serviceBusEndpoint string = messaging.outputs.serviceBusEndpoint
+// @description('Service Bus endpoint')
+// output serviceBusEndpoint string = messaging.outputs.serviceBusEndpoint
 
-@description('Main queue name')
-output mainQueueName string = messaging.outputs.mainQueueName
+// @description('Main queue name')
+// output mainQueueName string = messaging.outputs.mainQueueName
 
-@description('Dead-letter queue path')
-output deadLetterQueuePath string = messaging.outputs.deadLetterQueuePath
+// @description('Dead-letter queue path')
+// output deadLetterQueuePath string = messaging.outputs.deadLetterQueuePath

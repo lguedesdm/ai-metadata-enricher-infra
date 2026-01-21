@@ -73,6 +73,7 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
 // =============================================================================
 // BLOB SERVICE
 // =============================================================================
+// REATIVADO: Necessário como parent resource para criar Blob Containers (TASK 2)
 
 resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-01-01' = {
   parent: storageAccount
@@ -88,12 +89,13 @@ resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-01-01'
 // =============================================================================
 // BLOB CONTAINERS
 // =============================================================================
+// REATIVADO: TASK 2 - Create Blob Containers (synergy, zipline, documentation, schemas)
 
 resource synergyContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-01-01' = {
   parent: blobService
   name: 'synergy'
   properties: {
-    publicAccess: 'None'
+    publicAccess: 'None'  // Privado, sem acesso público
   }
 }
 
@@ -101,7 +103,7 @@ resource ziplineContainer 'Microsoft.Storage/storageAccounts/blobServices/contai
   parent: blobService
   name: 'zipline'
   properties: {
-    publicAccess: 'None'
+    publicAccess: 'None'  // Privado, sem acesso público
   }
 }
 
@@ -109,7 +111,7 @@ resource documentationContainer 'Microsoft.Storage/storageAccounts/blobServices/
   parent: blobService
   name: 'documentation'
   properties: {
-    publicAccess: 'None'
+    publicAccess: 'None'  // Privado, sem acesso público
   }
 }
 
@@ -117,7 +119,33 @@ resource schemasContainer 'Microsoft.Storage/storageAccounts/blobServices/contai
   parent: blobService
   name: 'schemas'
   properties: {
-    publicAccess: 'None'
+    publicAccess: 'None'  // Privado, sem acesso público
+  }
+}
+
+// =============================================================================
+// RBAC - ROLE ASSIGNMENTS
+// =============================================================================
+// TASK 3: Apply RBAC for Storage Account access using Managed Identity
+// Built-in Azure roles for Storage:
+// - Storage Blob Data Reader: 2a2b9908-6ea1-4ae2-8e65-a410df84e7d1
+// - Storage Blob Data Contributor: ba92f5b4-2d11-453d-a403-e96b0029c9fe (read/write/delete)
+//
+// MVP Dev Strategy:
+// - For now, we grant the Storage Account's own Managed Identity contributor access
+//   to demonstrate RBAC pattern and validate access model
+// - Future tasks will grant specific roles to Orchestrator, AI Search, etc.
+// - No SAS tokens or access keys are used (RBAC-only authentication)
+
+// Storage Blob Data Contributor role for the Storage Account's own Managed Identity
+// This demonstrates RBAC setup and will be used for internal operations
+resource storageRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(storageAccount.id, 'StorageBlobDataContributor')
+  scope: storageAccount
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')
+    principalId: storageAccount.identity.principalId
+    principalType: 'ServicePrincipal'
   }
 }
 
@@ -136,3 +164,12 @@ output blobEndpoint string = storageAccount.properties.primaryEndpoints.blob
 
 @description('System-assigned Managed Identity principal ID')
 output managedIdentityPrincipalId string = storageAccount.identity.principalId
+
+@description('RBAC role assignment ID for validation')
+output roleAssignmentId string = storageRoleAssignment.id
+
+@description('Storage Account resource name for access validation commands')
+output storageAccountNameForValidation string = storageAccount.name
+
+@description('Resource group name (derived from resourceId)')
+output resourceGroupName string = split(storageAccount.id, '/')[4]
