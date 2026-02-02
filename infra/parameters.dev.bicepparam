@@ -37,7 +37,7 @@ param auditTtlSeconds = 15552000  // 180 days (180 * 24 * 60 * 60)
 // AZURE AI SEARCH PARAMETERS
 // =============================================================================
 
-param searchSku = 'basic'  // Basic tier for Dev
+param searchSku = 'dev'  // Dev SKU for Azure AI Search (Dev environment)
 
 // =============================================================================
 // SERVICE BUS PARAMETERS

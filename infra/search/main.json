@@ -1,0 +1,103 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.39.26.7824",
+      "templateHash": "6402719562699185054"
+    }
+  },
+  "parameters": {
+    "resourcePrefix": {
+      "type": "string",
+      "metadata": {
+        "description": "The resource name prefix"
+      }
+    },
+    "location": {
+      "type": "string",
+      "metadata": {
+        "description": "The Azure region for resources"
+      }
+    },
+    "tags": {
+      "type": "object",
+      "metadata": {
+        "description": "Tags to apply to resources"
+      }
+    },
+    "searchSku": {
+      "type": "string",
+      "defaultValue": "dev",
+      "allowedValues": [
+        "dev",
+        "free",
+        "basic",
+        "standard",
+        "standard2",
+        "standard3"
+      ],
+      "metadata": {
+        "description": "Search service SKU"
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Search/searchServices",
+      "apiVersion": "2023-11-01",
+      "name": "[format('{0}-search', parameters('resourcePrefix'))]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "sku": {
+        "name": "[parameters('searchSku')]"
+      },
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "replicaCount": 1,
+        "partitionCount": 1,
+        "hostingMode": "default",
+        "publicNetworkAccess": "enabled",
+        "networkRuleSet": {
+          "ipRules": []
+        },
+        "encryptionWithCmk": {
+          "enforcement": "Unspecified"
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "searchServiceId": {
+      "type": "string",
+      "metadata": {
+        "description": "Search service resource ID"
+      },
+      "value": "[resourceId('Microsoft.Search/searchServices', format('{0}-search', parameters('resourcePrefix')))]"
+    },
+    "searchServiceName": {
+      "type": "string",
+      "metadata": {
+        "description": "Search service name"
+      },
+      "value": "[format('{0}-search', parameters('resourcePrefix'))]"
+    },
+    "searchEndpoint": {
+      "type": "string",
+      "metadata": {
+        "description": "Search service endpoint"
+      },
+      "value": "[format('https://{0}.search.windows.net', format('{0}-search', parameters('resourcePrefix')))]"
+    },
+    "managedIdentityPrincipalId": {
+      "type": "string",
+      "metadata": {
+        "description": "System-assigned Managed Identity principal ID"
+      },
+      "value": "[reference(resourceId('Microsoft.Search/searchServices', format('{0}-search', parameters('resourcePrefix'))), '2023-11-01', 'full').identity.principalId]"
+    }
+  }
+}

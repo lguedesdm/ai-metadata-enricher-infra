@@ -45,8 +45,8 @@ param stateTtlSeconds int = 604800
 param auditTtlSeconds int = 15552000
 
 @description('Azure AI Search SKU')
-@allowed(['free', 'basic', 'standard', 'standard2', 'standard3'])
-param searchSku string = 'basic'
+@allowed(['dev', 'free', 'basic', 'standard', 'standard2', 'standard3'])
+param searchSku string = 'dev'
 
 @description('Service Bus SKU')
 @allowed(['Basic', 'Standard', 'Premium'])
@@ -121,17 +121,16 @@ module storage 'storage/main.bicep' = {
 // =============================================================================
 // AZURE AI SEARCH MODULE
 // =============================================================================
-// BLOCKED: Pertence à task "Provision Azure AI Search"
-// module search 'search/main.bicep' = {
-//   name: 'search-deployment'
-//   scope: resourceGroup
-//   params: {
-//     resourcePrefix: core.outputs.resourcePrefix
-//     location: core.outputs.resourceLocation
-//     tags: core.outputs.resourceTags
-//     searchSku: searchSku
-//   }
-// }
+module search 'search/main.bicep' = {
+  name: 'search-deployment'
+  scope: resourceGroup
+  params: {
+    resourcePrefix: core.outputs.resourcePrefix
+    location: core.outputs.resourceLocation
+    tags: core.outputs.resourceTags
+    searchSku: searchSku
+  }
+}
 
 // =============================================================================
 // MESSAGING MODULE
@@ -167,11 +166,11 @@ output storageAccountName string = storage.outputs.storageAccountName
 // @description('Cosmos DB endpoint')
 // output cosmosEndpoint string = cosmos.outputs.cosmosEndpoint
 
-// @description('Search service name')
-// output searchServiceName string = search.outputs.searchServiceName
+@description('Search service name')
+output searchServiceName string = search.outputs.searchServiceName
 
-// @description('Search service endpoint')
-// output searchEndpoint string = search.outputs.searchEndpoint
+@description('Search service endpoint')
+output searchEndpoint string = search.outputs.searchEndpoint
 
 // @description('Service Bus namespace name')
 // output serviceBusNamespaceName string = messaging.outputs.serviceBusNamespaceName
