@@ -71,22 +71,18 @@ Expected resources:
 - Azure AI Search Service
 - Service Bus Namespace
 
-### 7. Post-Deployment: Create Search Index
+### 7. Index Deployment (Infrastructure as Code)
 
-**Option A: Azure Portal**
-1. Navigate to Azure Portal → `aime-dev-search`
-2. Go to **Indexes** → **Add Index**
-3. Create index using schema from `infra/search/main.bicep`
+The unified index is created by a deploymentScript that consumes a versioned JSON schema stored in-repo. Manual portal changes are not allowed.
 
-**Option B: Azure CLI (Manual JSON)**
-```powershell
-# Create index definition JSON file, then:
-az search index create `
-  --service-name aime-dev-search `
-  --resource-group rg-aime-dev `
-  --name metadata-index `
-  --index-definition @index-schema.json
-```
+1. Place the frozen schema at: `infra/search/schemas/metadata-context-index-v1.json`
+2. Enable index deployment by setting `deploySearchIndex = true` in `infra/parameters.dev.bicepparam`
+3. Deploy again using the same command in step 5
+
+Notes:
+- The script calls the Azure Search REST API (`PUT /indexes/{name}`) with the JSON body
+- The index name is fixed: `metadata-context-index-v1`
+- The schema must include vector fields and a semantic configuration as defined in the frozen contract
 
 ### 8. Optional: Configure Purview
 
@@ -154,7 +150,7 @@ az group delete --name rg-aime-dev --yes --no-wait
 
 ## Next Steps
 
-1. **Create Search Index** (required)
+1. **Confirm index creation** (name: `metadata-context-index-v1`)
 2. **Configure Purview** (optional)
 3. **Review resource configuration** in Azure Portal
 4. **Plan compute layer** deployment (Azure Container Apps)

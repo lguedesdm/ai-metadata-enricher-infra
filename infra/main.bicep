@@ -45,8 +45,11 @@ param stateTtlSeconds int = 604800
 param auditTtlSeconds int = 15552000
 
 @description('Azure AI Search SKU')
-@allowed(['dev', 'free', 'basic', 'standard', 'standard2', 'standard3'])
-param searchSku string = 'dev'
+@allowed(['free', 'basic', 'standard', 'standard2', 'standard3'])
+param searchSku string = 'basic'
+
+@description('Create the unified Azure AI Search index from the frozen schema JSON')
+param deploySearchIndex bool = false
 
 @description('Service Bus SKU')
 @allowed(['Basic', 'Standard', 'Premium'])
@@ -129,6 +132,7 @@ module search 'search/main.bicep' = {
     location: core.outputs.resourceLocation
     tags: core.outputs.resourceTags
     searchSku: searchSku
+    deployIndex: deploySearchIndex
   }
 }
 

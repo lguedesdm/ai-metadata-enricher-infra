@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.39.26.7824",
-      "templateHash": "6402719562699185054"
+      "templateHash": "17511444227629631521"
     }
   },
   "parameters": {
@@ -41,7 +41,24 @@
       "metadata": {
         "description": "Search service SKU"
       }
+    },
+    "deployIndex": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Whether to deploy the unified index from the frozen schema JSON"
+      }
+    },
+    "indexName": {
+      "type": "string",
+      "defaultValue": "metadata-context-index-v1",
+      "metadata": {
+        "description": "Unified index name (must be versioned and treated as a contract)"
+      }
     }
+  },
+  "variables": {
+    "indexSchemaContent": "{\r\n  \"name\": \"metadata-context-index-v1\",\r\n  \"fields\": [\r\n    {\r\n      \"name\": \"id\",\r\n      \"type\": \"Edm.String\",\r\n      \"key\": true,\r\n      \"filterable\": false,\r\n      \"sortable\": false,\r\n      \"facetable\": false\r\n    },\r\n    {\r\n      \"name\": \"sourceSystem\",\r\n      \"type\": \"Edm.String\",\r\n      \"searchable\": false,\r\n      \"filterable\": true,\r\n      \"sortable\": false,\r\n      \"facetable\": true\r\n    },\r\n    {\r\n      \"name\": \"source\",\r\n      \"type\": \"Edm.String\",\r\n      \"searchable\": false,\r\n      \"filterable\": true,\r\n      \"sortable\": false,\r\n      \"facetable\": true\r\n    },\r\n    {\r\n      \"name\": \"elementType\",\r\n      \"type\": \"Edm.String\",\r\n      \"searchable\": false,\r\n      \"filterable\": true,\r\n      \"sortable\": false,\r\n      \"facetable\": true\r\n    },\r\n    {\r\n      \"name\": \"elementName\",\r\n      \"type\": \"Edm.String\",\r\n      \"searchable\": true,\r\n      \"filterable\": false,\r\n      \"sortable\": true,\r\n      \"facetable\": false\r\n    },\r\n    {\r\n      \"name\": \"title\",\r\n      \"type\": \"Edm.String\",\r\n      \"searchable\": true,\r\n      \"filterable\": false,\r\n      \"sortable\": false,\r\n      \"facetable\": false\r\n    },\r\n    {\r\n      \"name\": \"description\",\r\n      \"type\": \"Edm.String\",\r\n      \"searchable\": true,\r\n      \"filterable\": false,\r\n      \"sortable\": false,\r\n      \"facetable\": false\r\n    },\r\n    {\r\n      \"name\": \"suggestedDescription\",\r\n      \"type\": \"Edm.String\",\r\n      \"searchable\": true,\r\n      \"filterable\": false,\r\n      \"sortable\": false,\r\n      \"facetable\": false\r\n    },\r\n    {\r\n      \"name\": \"content\",\r\n      \"type\": \"Edm.String\",\r\n      \"searchable\": true,\r\n      \"filterable\": false,\r\n      \"sortable\": false,\r\n      \"facetable\": false\r\n    },\r\n    {\r\n      \"name\": \"tags\",\r\n      \"type\": \"Collection(Edm.String)\",\r\n      \"searchable\": true,\r\n      \"filterable\": true,\r\n      \"sortable\": false,\r\n      \"facetable\": true\r\n    },\r\n    {\r\n      \"name\": \"cedsLink\",\r\n      \"type\": \"Edm.String\",\r\n      \"searchable\": false,\r\n      \"filterable\": false,\r\n      \"sortable\": false,\r\n      \"facetable\": false\r\n    },\r\n    {\r\n      \"name\": \"lastUpdated\",\r\n      \"type\": \"Edm.DateTimeOffset\",\r\n      \"searchable\": false,\r\n      \"filterable\": true,\r\n      \"sortable\": true,\r\n      \"facetable\": false\r\n    },\r\n    {\r\n      \"name\": \"contentVector\",\r\n      \"type\": \"Collection(Edm.Single)\",\r\n      \"searchable\": false,\r\n      \"filterable\": false,\r\n      \"sortable\": false,\r\n      \"facetable\": false,\r\n      \"dimensions\": 1536,\r\n      \"vectorSearchProfile\": \"default-vector-profile\"\r\n    }\r\n  ],\r\n  \"vectorSearch\": {\r\n    \"profiles\": [\r\n      {\r\n        \"name\": \"default-vector-profile\",\r\n        \"algorithm\": \"hnsw-default\"\r\n      }\r\n    ],\r\n    \"algorithms\": [\r\n      {\r\n        \"name\": \"hnsw-default\",\r\n        \"kind\": \"hnsw\",\r\n        \"hnswParameters\": {\r\n          \"m\": 4,\r\n          \"efConstruction\": 400,\r\n          \"efSearch\": 500,\r\n          \"metric\": \"cosine\"\r\n        }\r\n      }\r\n    ]\r\n  },\r\n  \"semantic\": {\r\n    \"configurations\": [\r\n      {\r\n        \"name\": \"default-semantic-config\",\r\n        \"prioritizedFields\": {\r\n          \"titleField\": {\r\n            \"fieldName\": \"title\"\r\n          },\r\n          \"contentFields\": [\r\n            {\r\n              \"fieldName\": \"content\"\r\n            },\r\n            {\r\n              \"fieldName\": \"description\"\r\n            },\r\n            {\r\n              \"fieldName\": \"suggestedDescription\"\r\n            }\r\n          ],\r\n          \"keywordsFields\": [\r\n            {\r\n              \"fieldName\": \"tags\"\r\n            },\r\n            {\r\n              \"fieldName\": \"elementName\"\r\n            }\r\n          ]\r\n        }\r\n      }\r\n    ]\r\n  }\r\n}\r\n"
   },
   "resources": [
     {
@@ -67,6 +84,63 @@
         "encryptionWithCmk": {
           "enforcement": "Unspecified"
         }
+      }
+    },
+    {
+      "condition": "[parameters('deployIndex')]",
+      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+      "apiVersion": "2023-01-31",
+      "name": "[format('{0}-search-index-script-mi', parameters('resourcePrefix'))]",
+      "location": "[parameters('location')]"
+    },
+    {
+      "condition": "[parameters('deployIndex')]",
+      "type": "Microsoft.Resources/deploymentScripts",
+      "apiVersion": "2023-08-01",
+      "name": "[format('{0}-create-unified-index', parameters('resourcePrefix'))]",
+      "location": "[parameters('location')]",
+      "kind": "AzureCLI",
+      "identity": {
+        "type": "UserAssigned",
+        "userAssignedIdentities": {
+          "[format('{0}', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-search-index-script-mi', parameters('resourcePrefix'))))]": {}
+        }
+      },
+      "properties": {
+        "azCliVersion": "2.63.0",
+        "timeout": "PT15M",
+        "cleanupPreference": "OnSuccess",
+        "retentionInterval": "P1D",
+        "environmentVariables": [
+          {
+            "name": "SEARCH_SERVICE_NAME",
+            "value": "[format('{0}-search', parameters('resourcePrefix'))]"
+          },
+          {
+            "name": "SEARCH_ADMIN_KEY",
+            "secureValue": "[listAdminKeys(resourceId('Microsoft.Search/searchServices', format('{0}-search', parameters('resourcePrefix'))), '2023-11-01').primaryKey]"
+          },
+          {
+            "name": "INDEX_NAME",
+            "value": "[parameters('indexName')]"
+          },
+          {
+            "name": "INDEX_JSON_B64",
+            "value": "[base64(variables('indexSchemaContent'))]"
+          },
+          {
+            "name": "SEARCH_API_VERSION",
+            "value": "2023-11-01"
+          }
+        ],
+        "scriptContent": "set -euo pipefail\r\n\r\ntmpdir=$(mktemp -d)\r\necho \"$INDEX_JSON_B64\" | base64 -d > \"$tmpdir/index.json\"\r\n\r\nurl=\"https://${SEARCH_SERVICE_NAME}.search.windows.net/indexes/${INDEX_NAME}?api-version=${SEARCH_API_VERSION}\"\r\n\r\necho \"Creating/updating index: ${INDEX_NAME} on service: ${SEARCH_SERVICE_NAME}\"\r\naz rest \\\r\n  --method put \\\r\n  --url \"$url\" \\\r\n  --headers \"Content-Type=application/json\" \"api-key=${SEARCH_ADMIN_KEY}\" \\\r\n  --body @\"$tmpdir/index.json\"\r\n\r\necho \"Index deployment completed.\"\r\n"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-search-index-script-mi', parameters('resourcePrefix')))]",
+        "[resourceId('Microsoft.Search/searchServices', format('{0}-search', parameters('resourcePrefix')))]"
+      ],
+      "metadata": {
+        "description": "Create or update the unified Azure AI Search index from the JSON schema"
       }
     }
   ],
@@ -98,6 +172,13 @@
         "description": "System-assigned Managed Identity principal ID"
       },
       "value": "[reference(resourceId('Microsoft.Search/searchServices', format('{0}-search', parameters('resourcePrefix'))), '2023-11-01', 'full').identity.principalId]"
+    },
+    "unifiedIndexName": {
+      "type": "string",
+      "metadata": {
+        "description": "Unified index name (deployed when deployIndex=true)"
+      },
+      "value": "[parameters('indexName')]"
     }
   }
 }

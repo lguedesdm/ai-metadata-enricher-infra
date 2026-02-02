@@ -37,7 +37,8 @@ param auditTtlSeconds = 15552000  // 180 days (180 * 24 * 60 * 60)
 // AZURE AI SEARCH PARAMETERS
 // =============================================================================
 
-param searchSku = 'dev'  // Dev SKU for Azure AI Search (Dev environment)
+param searchSku = 'basic'  // Basic tier for Azure AI Search in Dev per architecture
+param deploySearchIndex = true  // Enable unified index creation from the frozen schema JSON
 
 // =============================================================================
 // SERVICE BUS PARAMETERS
