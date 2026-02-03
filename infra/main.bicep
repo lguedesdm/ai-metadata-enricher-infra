@@ -32,17 +32,13 @@ param environment string = 'dev'
 param location string = 'eastus'
 
 @description('The base project name')
-param projectName string = 'aime'
+param projectName string = 'ai-metadata'
 
 @description('Storage Account SKU')
 @allowed(['Standard_LRS', 'Standard_GRS', 'Standard_ZRS'])
 param storageSku string = 'Standard_LRS'
 
-@description('Cosmos DB State container TTL in seconds (7 days)')
-param stateTtlSeconds int = 604800
-
-@description('Cosmos DB Audit container TTL in seconds (180 days)')
-param auditTtlSeconds int = 15552000
+// Cosmos TTL parameters intentionally omitted in DEV; handled in a future task
 
 @description('Azure AI Search SKU')
 @allowed(['free', 'basic', 'standard', 'standard2', 'standard3'])
@@ -51,12 +47,21 @@ param searchSku string = 'basic'
 @description('Create the unified Azure AI Search index from the frozen schema JSON')
 param deploySearchIndex bool = false
 
+@description('Deploy Storage module')
+param deployStorage bool = false
+
+@description('Deploy Search module')
+param deploySearch bool = false
+
 @description('Service Bus SKU')
 @allowed(['Basic', 'Standard', 'Premium'])
 param serviceBusSku string = 'Standard'
 
 @description('Unique suffix for globally unique resources (leave empty to auto-generate based on subscription and resource group)')
 param uniqueSuffix string = ''
+
+@description('Deploy Cosmos containers (state, audit)')
+param deployCosmosContainers bool = false
 
 // =============================================================================
 // RESOURCE GROUP
@@ -92,7 +97,7 @@ module core 'core/main.bicep' = {
 // =============================================================================
 // Deploys Storage Account and blob containers
 
-module storage 'storage/main.bicep' = {
+module storage 'storage/main.bicep' = if (deployStorage) {
   name: 'storage-deployment'
   scope: resourceGroup
   params: {
@@ -107,24 +112,19 @@ module storage 'storage/main.bicep' = {
 // =============================================================================
 // COSMOS DB MODULE
 // =============================================================================
-// BLOCKED: Pertence à task "Provision Azure Cosmos DB"
-// module cosmos 'cosmos/main.bicep' = {
-//   name: 'cosmos-deployment'
-//   scope: resourceGroup
-//   params: {
-//     resourcePrefix: core.outputs.resourcePrefix
-//     location: core.outputs.resourceLocation
-//     tags: core.outputs.resourceTags
-//     stateTtlSeconds: stateTtlSeconds
-//     auditTtlSeconds: auditTtlSeconds
-//     uniqueSuffix: uniqueSuffix
-//   }
-// }
+module cosmosAccountDb 'cosmos/account-db.bicep' = {
+  name: 'cosmos-account-db'
+  scope: resourceGroup
+  params: {
+    cosmosAccountName: 'cosmos-ai-metadata-dev'
+    databaseName: 'metadata'
+  }
+}
 
 // =============================================================================
 // AZURE AI SEARCH MODULE
 // =============================================================================
-module search 'search/main.bicep' = {
+module search 'search/main.bicep' = if (deploySearch) {
   name: 'search-deployment'
   scope: resourceGroup
   params: {
@@ -133,6 +133,19 @@ module search 'search/main.bicep' = {
     tags: core.outputs.resourceTags
     searchSku: searchSku
     deployIndex: deploySearchIndex
+  }
+}
+
+// =============================================================================
+// COSMOS CONTAINERS MODULE (PHASE 2)
+// =============================================================================
+module cosmosContainers 'cosmos/containers.bicep' = if (deployCosmosContainers) {
+  name: 'cosmos-containers'
+  scope: resourceGroup
+  params: {
+    accountName: 'cosmos-ai-metadata-dev'
+    databaseName: 'metadata'
+    partitionKeyPath: '/entityType'
   }
 }
 
@@ -160,21 +173,8 @@ module search 'search/main.bicep' = {
 @description('Resource group name')
 output resourceGroupName string = resourceGroup.name
 
-@description('Storage account name')
-output storageAccountName string = storage.outputs.storageAccountName
-
-// BLOCKED: Outputs dos módulos bloqueados
-// @description('Cosmos DB account name')
-// output cosmosAccountName string = cosmos.outputs.cosmosAccountName
-
-// @description('Cosmos DB endpoint')
-// output cosmosEndpoint string = cosmos.outputs.cosmosEndpoint
-
-@description('Search service name')
-output searchServiceName string = search.outputs.searchServiceName
-
-@description('Search service endpoint')
-output searchEndpoint string = search.outputs.searchEndpoint
+@description('Cosmos DB account name')
+output cosmosAccountName string = cosmosAccountDb.outputs.cosmosAccountName
 
 // @description('Service Bus namespace name')
 // output serviceBusNamespaceName string = messaging.outputs.serviceBusNamespaceName

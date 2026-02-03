@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.39.26.7824",
-      "templateHash": "8539351540558071682"
+      "templateHash": "5454603317505006766"
     }
   },
   "parameters": {
@@ -25,7 +25,7 @@
     },
     "projectName": {
       "type": "string",
-      "defaultValue": "aime",
+      "defaultValue": "ai-metadata",
       "metadata": {
         "description": "The base project name"
       }
@@ -42,25 +42,10 @@
         "description": "Storage Account SKU"
       }
     },
-    "stateTtlSeconds": {
-      "type": "int",
-      "defaultValue": 604800,
-      "metadata": {
-        "description": "Cosmos DB State container TTL in seconds (7 days)"
-      }
-    },
-    "auditTtlSeconds": {
-      "type": "int",
-      "defaultValue": 15552000,
-      "metadata": {
-        "description": "Cosmos DB Audit container TTL in seconds (180 days)"
-      }
-    },
     "searchSku": {
       "type": "string",
-      "defaultValue": "dev",
+      "defaultValue": "basic",
       "allowedValues": [
-        "dev",
         "free",
         "basic",
         "standard",
@@ -76,6 +61,20 @@
       "defaultValue": false,
       "metadata": {
         "description": "Create the unified Azure AI Search index from the frozen schema JSON"
+      }
+    },
+    "deployStorage": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Deploy Storage module"
+      }
+    },
+    "deploySearch": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Deploy Search module"
       }
     },
     "serviceBusSku": {
@@ -95,6 +94,13 @@
       "defaultValue": "",
       "metadata": {
         "description": "Unique suffix for globally unique resources (leave empty to auto-generate based on subscription and resource group)"
+      }
+    },
+    "deployCosmosContainers": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Deploy Cosmos containers (state, audit)"
       }
     }
   },
@@ -220,6 +226,7 @@
       ]
     },
     {
+      "condition": "[parameters('deployStorage')]",
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
       "name": "storage-deployment",
@@ -473,6 +480,88 @@
     {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
+      "name": "cosmos-account-db",
+      "resourceGroup": "[format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "cosmosAccountName": {
+            "value": "cosmos-ai-metadata-dev"
+          },
+          "databaseName": {
+            "value": "metadata"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "15811110860406366552"
+            }
+          },
+          "parameters": {
+            "cosmosAccountName": {
+              "type": "string",
+              "defaultValue": "cosmos-ai-metadata-dev",
+              "metadata": {
+                "description": "Cosmos DB account name (fixed for DEV)"
+              }
+            },
+            "databaseName": {
+              "type": "string",
+              "defaultValue": "metadata",
+              "metadata": {
+                "description": "Logical database name"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases",
+              "apiVersion": "2023-11-15",
+              "name": "[format('{0}/{1}', parameters('cosmosAccountName'), parameters('databaseName'))]",
+              "properties": {
+                "resource": {
+                  "id": "[parameters('databaseName')]"
+                },
+                "options": {
+                  "throughput": 400
+                }
+              }
+            }
+          ],
+          "outputs": {
+            "cosmosAccountName": {
+              "type": "string",
+              "metadata": {
+                "description": "Cosmos DB account name"
+              },
+              "value": "[parameters('cosmosAccountName')]"
+            },
+            "databaseName": {
+              "type": "string",
+              "metadata": {
+                "description": "Database name"
+              },
+              "value": "[parameters('databaseName')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', format('rg-{0}-{1}', parameters('projectName'), parameters('environment')))]"
+      ]
+    },
+    {
+      "condition": "[parameters('deploySearch')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
       "name": "search-deployment",
       "resourceGroup": "[format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))]",
       "properties": {
@@ -504,7 +593,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.39.26.7824",
-              "templateHash": "7655964659554092803"
+              "templateHash": "11579373737825445105"
             }
           },
           "parameters": {
@@ -528,9 +617,8 @@
             },
             "searchSku": {
               "type": "string",
-              "defaultValue": "dev",
+              "defaultValue": "basic",
               "allowedValues": [
-                "dev",
                 "free",
                 "basic",
                 "standard",
@@ -557,7 +645,7 @@
             }
           },
           "variables": {
-            "indexSchemaContent": "{\r\n  \"name\": \"metadata-context-index-v1\",\r\n  \"fields\": [\r\n    {\r\n      \"name\": \"id\",\r\n      \"type\": \"Edm.String\",\r\n      \"key\": true,\r\n      \"filterable\": false,\r\n      \"sortable\": false,\r\n      \"facetable\": false\r\n    },\r\n    {\r\n      \"name\": \"sourceSystem\",\r\n      \"type\": \"Edm.String\",\r\n      \"searchable\": false,\r\n      \"filterable\": true,\r\n      \"sortable\": false,\r\n      \"facetable\": true\r\n    },\r\n    {\r\n      \"name\": \"source\",\r\n      \"type\": \"Edm.String\",\r\n      \"searchable\": false,\r\n      \"filterable\": true,\r\n      \"sortable\": false,\r\n      \"facetable\": true\r\n    },\r\n    {\r\n      \"name\": \"elementType\",\r\n      \"type\": \"Edm.String\",\r\n      \"searchable\": false,\r\n      \"filterable\": true,\r\n      \"sortable\": false,\r\n      \"facetable\": true\r\n    },\r\n    {\r\n      \"name\": \"elementName\",\r\n      \"type\": \"Edm.String\",\r\n      \"searchable\": true,\r\n      \"filterable\": false,\r\n      \"sortable\": true,\r\n      \"facetable\": false\r\n    },\r\n    {\r\n      \"name\": \"title\",\r\n      \"type\": \"Edm.String\",\r\n      \"searchable\": true,\r\n      \"filterable\": false,\r\n      \"sortable\": false,\r\n      \"facetable\": false\r\n    },\r\n    {\r\n      \"name\": \"description\",\r\n      \"type\": \"Edm.String\",\r\n      \"searchable\": true,\r\n      \"filterable\": false,\r\n      \"sortable\": false,\r\n      \"facetable\": false\r\n    },\r\n    {\r\n      \"name\": \"suggestedDescription\",\r\n      \"type\": \"Edm.String\",\r\n      \"searchable\": true,\r\n      \"filterable\": false,\r\n      \"sortable\": false,\r\n      \"facetable\": false\r\n    },\r\n    {\r\n      \"name\": \"content\",\r\n      \"type\": \"Edm.String\",\r\n      \"searchable\": true,\r\n      \"filterable\": false,\r\n      \"sortable\": false,\r\n      \"facetable\": false\r\n    },\r\n    {\r\n      \"name\": \"tags\",\r\n      \"type\": \"Collection(Edm.String)\",\r\n      \"searchable\": true,\r\n      \"filterable\": true,\r\n      \"sortable\": false,\r\n      \"facetable\": true\r\n    },\r\n    {\r\n      \"name\": \"cedsLink\",\r\n      \"type\": \"Edm.String\",\r\n      \"searchable\": false,\r\n      \"filterable\": false,\r\n      \"sortable\": false,\r\n      \"facetable\": false\r\n    },\r\n    {\r\n      \"name\": \"lastUpdated\",\r\n      \"type\": \"Edm.DateTimeOffset\",\r\n      \"searchable\": false,\r\n      \"filterable\": true,\r\n      \"sortable\": true,\r\n      \"facetable\": false\r\n    },\r\n    {\r\n      \"name\": \"contentVector\",\r\n      \"type\": \"Collection(Edm.Single)\",\r\n      \"searchable\": false,\r\n      \"filterable\": false,\r\n      \"sortable\": false,\r\n      \"facetable\": false,\r\n      \"dimensions\": 1536,\r\n      \"vectorSearchProfile\": \"default-vector-profile\"\r\n    }\r\n  ],\r\n  \"vectorSearch\": {\r\n    \"profiles\": [\r\n      {\r\n        \"name\": \"default-vector-profile\",\r\n        \"algorithm\": \"hnsw-default\"\r\n      }\r\n    ],\r\n    \"algorithms\": [\r\n      {\r\n        \"name\": \"hnsw-default\",\r\n        \"kind\": \"hnsw\",\r\n        \"hnswParameters\": {\r\n          \"m\": 4,\r\n          \"efConstruction\": 400,\r\n          \"efSearch\": 500,\r\n          \"metric\": \"cosine\"\r\n        }\r\n      }\r\n    ]\r\n  },\r\n  \"semantic\": {\r\n    \"configurations\": [\r\n      {\r\n        \"name\": \"default-semantic-config\",\r\n        \"prioritizedFields\": {\r\n          \"titleField\": {\r\n            \"fieldName\": \"title\"\r\n          },\r\n          \"contentFields\": [\r\n            {\r\n              \"fieldName\": \"content\"\r\n            },\r\n            {\r\n              \"fieldName\": \"description\"\r\n            },\r\n            {\r\n              \"fieldName\": \"suggestedDescription\"\r\n            }\r\n          ],\r\n          \"keywordsFields\": [\r\n            {\r\n              \"fieldName\": \"tags\"\r\n            },\r\n            {\r\n              \"fieldName\": \"elementName\"\r\n            }\r\n          ]\r\n        }\r\n      }\r\n    ]\r\n  }\r\n}\r\n"
+            "indexSchemaContent": "{\r\n  \"name\": \"metadata-context-index-v1\",\r\n  \"fields\": [\r\n    {\r\n      \"name\": \"id\",\r\n      \"type\": \"Edm.String\",\r\n      \"key\": true,\r\n      \"filterable\": false,\r\n      \"sortable\": false,\r\n      \"facetable\": false\r\n    },\r\n    {\r\n      \"name\": \"sourceSystem\",\r\n      \"type\": \"Edm.String\",\r\n      \"searchable\": false,\r\n      \"filterable\": true,\r\n      \"sortable\": false,\r\n      \"facetable\": true\r\n    },\r\n    {\r\n      \"name\": \"source\",\r\n      \"type\": \"Edm.String\",\r\n      \"searchable\": false,\r\n      \"filterable\": true,\r\n      \"sortable\": false,\r\n      \"facetable\": true\r\n    },\r\n    {\r\n      \"name\": \"elementType\",\r\n      \"type\": \"Edm.String\",\r\n      \"searchable\": false,\r\n      \"filterable\": true,\r\n      \"sortable\": false,\r\n      \"facetable\": true\r\n    },\r\n    {\r\n      \"name\": \"elementName\",\r\n      \"type\": \"Edm.String\",\r\n      \"searchable\": true,\r\n      \"filterable\": false,\r\n      \"sortable\": true,\r\n      \"facetable\": false\r\n    },\r\n    {\r\n      \"name\": \"title\",\r\n      \"type\": \"Edm.String\",\r\n      \"searchable\": true,\r\n      \"filterable\": false,\r\n      \"sortable\": false,\r\n      \"facetable\": false\r\n    },\r\n    {\r\n      \"name\": \"description\",\r\n      \"type\": \"Edm.String\",\r\n      \"searchable\": true,\r\n      \"filterable\": false,\r\n      \"sortable\": false,\r\n      \"facetable\": false\r\n    },\r\n    {\r\n      \"name\": \"suggestedDescription\",\r\n      \"type\": \"Edm.String\",\r\n      \"searchable\": true,\r\n      \"filterable\": false,\r\n      \"sortable\": false,\r\n      \"facetable\": false\r\n    },\r\n    {\r\n      \"name\": \"content\",\r\n      \"type\": \"Edm.String\",\r\n      \"searchable\": true,\r\n      \"filterable\": false,\r\n      \"sortable\": false,\r\n      \"facetable\": false\r\n    },\r\n    {\r\n      \"name\": \"tags\",\r\n      \"type\": \"Collection(Edm.String)\",\r\n      \"searchable\": true,\r\n      \"filterable\": true,\r\n      \"sortable\": false,\r\n      \"facetable\": true\r\n    },\r\n    {\r\n      \"name\": \"cedsLink\",\r\n      \"type\": \"Edm.String\",\r\n      \"searchable\": false,\r\n      \"filterable\": false,\r\n      \"sortable\": false,\r\n      \"facetable\": false\r\n    },\r\n    {\r\n      \"name\": \"lastUpdated\",\r\n      \"type\": \"Edm.DateTimeOffset\",\r\n      \"searchable\": false,\r\n      \"filterable\": true,\r\n      \"sortable\": true,\r\n      \"facetable\": false\r\n    },\r\n    {\r\n      \"name\": \"contentVector\",\r\n      \"type\": \"Collection(Edm.Single)\",\r\n      \"searchable\": true,\r\n      \"retrievable\": true,\r\n      \"filterable\": false,\r\n      \"sortable\": false,\r\n      \"facetable\": false,\r\n      \"dimensions\": 1536,\r\n      \"vectorSearchProfile\": \"default-vector-profile\"\r\n    }\r\n  ],\r\n  \"vectorSearch\": {\r\n    \"profiles\": [\r\n      {\r\n        \"name\": \"default-vector-profile\",\r\n        \"algorithm\": \"hnsw-default\"\r\n      }\r\n    ],\r\n    \"algorithms\": [\r\n      {\r\n        \"name\": \"hnsw-default\",\r\n        \"kind\": \"hnsw\",\r\n        \"hnswParameters\": {\r\n          \"m\": 4,\r\n          \"efConstruction\": 400,\r\n          \"efSearch\": 500,\r\n          \"metric\": \"cosine\"\r\n        }\r\n      }\r\n    ]\r\n  },\r\n  \"semantic\": {\r\n    \"configurations\": [\r\n      {\r\n        \"name\": \"default-semantic-config\",\r\n        \"prioritizedFields\": {\r\n          \"titleField\": {\r\n            \"fieldName\": \"title\"\r\n          },\r\n          \"prioritizedContentFields\": [\r\n            {\r\n              \"fieldName\": \"content\"\r\n            },\r\n            {\r\n              \"fieldName\": \"description\"\r\n            },\r\n            {\r\n              \"fieldName\": \"suggestedDescription\"\r\n            }\r\n          ],\r\n          \"prioritizedKeywordsFields\": [\r\n            {\r\n              \"fieldName\": \"tags\"\r\n            },\r\n            {\r\n              \"fieldName\": \"elementName\"\r\n            }\r\n          ]\r\n        }\r\n      }\r\n    ]\r\n  }\r\n}\r\n"
           },
           "resources": [
             {
@@ -587,13 +675,23 @@
             },
             {
               "condition": "[parameters('deployIndex')]",
+              "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+              "apiVersion": "2023-01-31",
+              "name": "[format('{0}-search-index-script-mi', parameters('resourcePrefix'))]",
+              "location": "[parameters('location')]"
+            },
+            {
+              "condition": "[parameters('deployIndex')]",
               "type": "Microsoft.Resources/deploymentScripts",
               "apiVersion": "2023-08-01",
               "name": "[format('{0}-create-unified-index', parameters('resourcePrefix'))]",
               "location": "[parameters('location')]",
               "kind": "AzureCLI",
               "identity": {
-                "type": "SystemAssigned"
+                "type": "UserAssigned",
+                "userAssignedIdentities": {
+                  "[format('{0}', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-search-index-script-mi', parameters('resourcePrefix'))))]": {}
+                }
               },
               "properties": {
                 "azCliVersion": "2.63.0",
@@ -625,6 +723,7 @@
                 "scriptContent": "set -euo pipefail\r\n\r\ntmpdir=$(mktemp -d)\r\necho \"$INDEX_JSON_B64\" | base64 -d > \"$tmpdir/index.json\"\r\n\r\nurl=\"https://${SEARCH_SERVICE_NAME}.search.windows.net/indexes/${INDEX_NAME}?api-version=${SEARCH_API_VERSION}\"\r\n\r\necho \"Creating/updating index: ${INDEX_NAME} on service: ${SEARCH_SERVICE_NAME}\"\r\naz rest \\\r\n  --method put \\\r\n  --url \"$url\" \\\r\n  --headers \"Content-Type=application/json\" \"api-key=${SEARCH_ADMIN_KEY}\" \\\r\n  --body @\"$tmpdir/index.json\"\r\n\r\necho \"Index deployment completed.\"\r\n"
               },
               "dependsOn": [
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-search-index-script-mi', parameters('resourcePrefix')))]",
                 "[resourceId('Microsoft.Search/searchServices', format('{0}-search', parameters('resourcePrefix')))]"
               ],
               "metadata": {
@@ -675,6 +774,117 @@
         "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))), 'Microsoft.Resources/deployments', 'core-deployment')]",
         "[subscriptionResourceId('Microsoft.Resources/resourceGroups', format('rg-{0}-{1}', parameters('projectName'), parameters('environment')))]"
       ]
+    },
+    {
+      "condition": "[parameters('deployCosmosContainers')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "cosmos-containers",
+      "resourceGroup": "[format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "accountName": {
+            "value": "cosmos-ai-metadata-dev"
+          },
+          "databaseName": {
+            "value": "metadata"
+          },
+          "partitionKeyPath": {
+            "value": "/entityType"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "3770698481583115153"
+            }
+          },
+          "parameters": {
+            "accountName": {
+              "type": "string",
+              "defaultValue": "cosmos-ai-metadata-dev",
+              "metadata": {
+                "description": "Cosmos DB account name (existing)"
+              }
+            },
+            "databaseName": {
+              "type": "string",
+              "defaultValue": "metadata",
+              "metadata": {
+                "description": "Logical database name (existing)"
+              }
+            },
+            "partitionKeyPath": {
+              "type": "string",
+              "defaultValue": "/entityType",
+              "metadata": {
+                "description": "Partition key path for containers"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+              "apiVersion": "2023-11-15",
+              "name": "[format('{0}/{1}/{2}', parameters('accountName'), parameters('databaseName'), 'state')]",
+              "properties": {
+                "resource": {
+                  "id": "state",
+                  "partitionKey": {
+                    "paths": [
+                      "[parameters('partitionKeyPath')]"
+                    ],
+                    "kind": "Hash"
+                  }
+                }
+              }
+            },
+            {
+              "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+              "apiVersion": "2023-11-15",
+              "name": "[format('{0}/{1}/{2}', parameters('accountName'), parameters('databaseName'), 'audit')]",
+              "properties": {
+                "resource": {
+                  "id": "audit",
+                  "partitionKey": {
+                    "paths": [
+                      "[parameters('partitionKeyPath')]"
+                    ],
+                    "kind": "Hash"
+                  }
+                }
+              }
+            }
+          ],
+          "outputs": {
+            "stateContainerName": {
+              "type": "string",
+              "metadata": {
+                "description": "State container name"
+              },
+              "value": "state"
+            },
+            "auditContainerName": {
+              "type": "string",
+              "metadata": {
+                "description": "Audit container name"
+              },
+              "value": "audit"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', format('rg-{0}-{1}', parameters('projectName'), parameters('environment')))]"
+      ]
     }
   ],
   "outputs": {
@@ -685,26 +895,12 @@
       },
       "value": "[format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))]"
     },
-    "storageAccountName": {
+    "cosmosAccountName": {
       "type": "string",
       "metadata": {
-        "description": "Storage account name"
+        "description": "Cosmos DB account name"
       },
-      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))), 'Microsoft.Resources/deployments', 'storage-deployment'), '2025-04-01').outputs.storageAccountName.value]"
-    },
-    "searchServiceName": {
-      "type": "string",
-      "metadata": {
-        "description": "Search service name"
-      },
-      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))), 'Microsoft.Resources/deployments', 'search-deployment'), '2025-04-01').outputs.searchServiceName.value]"
-    },
-    "searchEndpoint": {
-      "type": "string",
-      "metadata": {
-        "description": "Search service endpoint"
-      },
-      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))), 'Microsoft.Resources/deployments', 'search-deployment'), '2025-04-01').outputs.searchEndpoint.value]"
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))), 'Microsoft.Resources/deployments', 'cosmos-account-db'), '2025-04-01').outputs.cosmosAccountName.value]"
     }
   }
 }

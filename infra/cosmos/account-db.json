@@ -1,0 +1,58 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.39.26.7824",
+      "templateHash": "15811110860406366552"
+    }
+  },
+  "parameters": {
+    "cosmosAccountName": {
+      "type": "string",
+      "defaultValue": "cosmos-ai-metadata-dev",
+      "metadata": {
+        "description": "Cosmos DB account name (fixed for DEV)"
+      }
+    },
+    "databaseName": {
+      "type": "string",
+      "defaultValue": "metadata",
+      "metadata": {
+        "description": "Logical database name"
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases",
+      "apiVersion": "2023-11-15",
+      "name": "[format('{0}/{1}', parameters('cosmosAccountName'), parameters('databaseName'))]",
+      "properties": {
+        "resource": {
+          "id": "[parameters('databaseName')]"
+        },
+        "options": {
+          "throughput": 400
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "cosmosAccountName": {
+      "type": "string",
+      "metadata": {
+        "description": "Cosmos DB account name"
+      },
+      "value": "[parameters('cosmosAccountName')]"
+    },
+    "databaseName": {
+      "type": "string",
+      "metadata": {
+        "description": "Database name"
+      },
+      "value": "[parameters('databaseName')]"
+    }
+  }
+}
