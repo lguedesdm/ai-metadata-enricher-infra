@@ -1,0 +1,24 @@
+[
+  {
+    "name": "HeuristicTriggerBridge",
+    "scriptFile": "PurviewBridge.dll",
+    "entryPoint": "PurviewBridge.HeuristicTriggerBridge.Run",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "events",
+        "direction": "In",
+        "type": "eventHubTrigger",
+        "eventHubName": "%EventHubName%",
+        "connection": "EventHubConnection",
+        "consumerGroup": "%ConsumerGroup%",
+        "cardinality": "Many",
+        "dataType": "String",
+        "properties": {}
+      }
+    ]
+  }
+]

@@ -32,3 +32,18 @@ Thumbs.db
 bin/
 obj/
 dist/
+
+# .NET / Visual Studio
+.vs/
+*.user
+*.suo
+
+# Portable .NET SDK
+.dotnet/
+
+# Azure Functions
+local.settings.json
+
+# Node / npm (tooling artifacts)
+node_modules/
+npm-debug.log*
