@@ -43,7 +43,9 @@ This document provides a high-level architectural overview of the infrastructure
 │  │  ┌──────────────────────────────────────────────────────┐  │    │
 │  │  │  Azure Service Bus                                   │  │    │
 │  │  │  - Namespace: Standard tier                          │  │    │
-│  │  │  - Queue: enrichment-requests                        │  │    │
+│  │  │  - Queue: purview-events  (Bridge → here)            │  │    │
+│  │  │  - DLQ: purview-events/$DeadLetterQueue              │  │    │
+│  │  │  - Queue: enrichment-requests  (Orchestrator ← here) │  │    │
 │  │  │  - DLQ: enrichment-requests/$DeadLetterQueue         │  │    │
 │  │  │  - Managed Identity (System-Assigned)                │  │    │
 │  │  └──────────────────────────────────────────────────────┘  │    │
@@ -114,13 +116,34 @@ This document provides a high-level architectural overview of the infrastructure
 **Purpose**: Event-driven messaging for enrichment requests
 
 **Queues**:
-- `enrichment-requests`: Main queue for enrichment job requests
-- `enrichment-requests/$DeadLetterQueue`: Automatic DLQ for failed messages
+- `purview-events`: Receives raw Purview diagnostic events forwarded by the HeuristicTriggerBridge. Isolates diagnostic telemetry from the enrichment pipeline.
+- `purview-events/$DeadLetterQueue`: Automatic DLQ for failed bridge messages
+- `enrichment-requests`: Main queue for enrichment job requests consumed by the Orchestrator
+- `enrichment-requests/$DeadLetterQueue`: Automatic DLQ for failed enrichment messages
 
-**Configuration**:
+**Message flow**:
+```
+Purview → Event Hub (purview-diagnostics)
+                ↓
+        HeuristicTriggerBridge (Azure Function)
+                ↓
+        Service Bus: purview-events
+                ↓
+        Orchestrator (Container App)   [future]
+                ↓
+        Service Bus: enrichment-requests
+                ↓
+        Enrichment Workers             [future]
+```
+
+**Configuration** (both queues):
 - Max delivery count: 10 attempts before moving to DLQ
 - Message TTL: 7 days
 - Lock duration: 5 minutes
+
+**RBAC** (`infra/messaging/servicebus-rbac.bicep`):
+- Purview Bridge → `Azure Service Bus Data Sender`
+- Orchestrator → `Azure Service Bus Data Receiver`
 
 **Security**: System-assigned Managed Identity, RBAC-based access
 
@@ -145,25 +168,31 @@ This document provides a high-level architectural overview of the infrastructure
 ## Data Flow (Future State with Compute)
 
 ```
-1. Event Trigger → Service Bus Queue
+1. Purview Diagnostic Setting → Event Hub (purview-diagnostics)
    ↓
-2. Orchestrator (Container App) → Reads from Queue
+2. HeuristicTriggerBridge (Azure Function) → Forwards event to Service Bus
    ↓
-3. Orchestrator → Queries Purview for metadata
+3. Service Bus: purview-events  ← Bridge publishes here
    ↓
-4. Orchestrator → Stores job state in Cosmos DB (state container)
+4. Orchestrator (Container App) → Reads from purview-events, creates enrichment job
    ↓
-5. Enrichment Worker (Container App) → Processes enrichment
+5. Orchestrator → Publishes job request to Service Bus: enrichment-requests
    ↓
-6. Worker → Generates AI suggestion (LLM call)
+6. Enrichment Worker (Container App) → Reads from enrichment-requests
    ↓
-7. Worker → Writes suggestion to Purview (suggestedDescription attribute)
+7. Worker → Queries Purview for metadata
    ↓
-8. Worker → Logs operation to Cosmos DB (audit container)
+8. Worker → Stores job state in Cosmos DB (state container)
    ↓
-9. Worker → Updates AI Search index with enriched metadata
+9. Worker → Generates AI suggestion (LLM call)
    ↓
-10. Worker → Completes queue message or moves to DLQ on failure
+10. Worker → Writes suggestion to Purview (suggestedDescription attribute)
+    ↓
+11. Worker → Logs operation to Cosmos DB (audit container)
+    ↓
+12. Worker → Updates AI Search index with enriched metadata
+    ↓
+13. Worker → Completes queue message or moves to DLQ on failure
 ```
 
 ---

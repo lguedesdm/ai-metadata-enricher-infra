@@ -11,6 +11,7 @@
 //   - Cosmos DB (state and audit containers)
 //   - Azure AI Search (search service and index)
 //   - Messaging (Service Bus queues)
+//   - Messaging RBAC (Service Bus role assignments for bridge and orchestrator)
 //
 // Usage:
 //   az deployment sub create \
@@ -62,6 +63,12 @@ param uniqueSuffix string = ''
 
 @description('Deploy Cosmos containers (state, audit)')
 param deployCosmosContainers bool = false
+
+@description('Principal ID of the Purview Bridge Managed Identity. Leave empty until the Function App is provisioned.')
+param bridgePrincipalId string = ''
+
+@description('Principal ID of the Orchestrator Managed Identity. Leave empty until the Container App is provisioned.')
+param orchestratorPrincipalId string = ''
 
 // =============================================================================
 // RESOURCE GROUP
@@ -161,6 +168,25 @@ module messaging 'messaging/main.bicep' = {
     location: core.outputs.resourceLocation
     tags: core.outputs.resourceTags
     serviceBusSku: serviceBusSku
+  }
+}
+
+// =============================================================================
+// MESSAGING RBAC MODULE
+// =============================================================================
+// Grants least-privilege Service Bus roles to compute identities.
+// Skipped when principal IDs are empty (i.e., before compute is provisioned).
+//
+//   Bridge (Azure Function)       → Azure Service Bus Data Sender
+//   Orchestrator (Container App)  → Azure Service Bus Data Receiver
+
+module serviceBusRbac 'messaging/servicebus-rbac.bicep' = {
+  name: 'servicebus-rbac-deployment'
+  scope: resourceGroup
+  params: {
+    serviceBusNamespaceName: messaging.outputs.serviceBusNamespaceName
+    bridgePrincipalId: bridgePrincipalId
+    orchestratorPrincipalId: orchestratorPrincipalId
   }
 }
 

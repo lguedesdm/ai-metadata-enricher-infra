@@ -48,9 +48,16 @@ This checklist confirms all required components for the AI Metadata Enricher inf
 
 ### Messaging Module (`infra/messaging/main.bicep`)
 - [x] Creates Service Bus namespace (Standard tier) with system-assigned Managed Identity
-- [x] Creates main queue: `enrichment-requests`
-- [x] Configures dead-letter queue (automatic)
+- [x] Creates queue: `purview-events` (Bridge → here, separates Purview telemetry)
+- [x] Creates queue: `enrichment-requests` (Orchestrator ← here, enrichment pipeline)
+- [x] Configures dead-letter queues (automatic, both queues)
 - [x] Sets message TTL, max delivery count, and lock duration
+
+### Service Bus RBAC Module (`infra/messaging/servicebus-rbac.bicep`)
+- [x] Purview Bridge → `Azure Service Bus Data Sender` (namespace scope)
+- [x] Orchestrator → `Azure Service Bus Data Receiver` (namespace scope)
+- [x] Conditional deployment (skipped when principalId is empty)
+- [x] Deterministic GUID-based role assignment names
 
 ### Main Orchestration (`infra/main.bicep`)
 - [x] Subscription-level deployment (creates resource group)

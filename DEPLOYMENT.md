@@ -98,9 +98,10 @@ After successful deployment, you'll receive:
 - `cosmosEndpoint`: Cosmos DB HTTPS endpoint
 - `searchServiceName`: `aime-dev-search`
 - `searchEndpoint`: Search service HTTPS endpoint
-- `serviceBusNamespaceName`: `aime-dev-sb`
+- `serviceBusNamespaceName`: `ai-metadata-dev-sbus`
 - `serviceBusEndpoint`: Service Bus HTTPS endpoint
-- `mainQueueName`: `enrichment-requests`
+- `purviewEventsQueueName`: `purview-events` (Bridge → here)
+- `mainQueueName`: `enrichment-requests` (Orchestrator ← here)
 - `deadLetterQueuePath`: `enrichment-requests/$DeadLetterQueue`
 
 ## Troubleshooting
