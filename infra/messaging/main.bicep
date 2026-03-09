@@ -5,8 +5,9 @@
 //
 // Components:
 //   - Service Bus Namespace
-//   - Main Queue: Primary event queue for enrichment requests
-//   - Dead-Letter Queue (DLQ): Automatically configured for failed messages
+//   - Enrichment Queue: Pipeline trigger for enrichment requests
+//   - Purview Events Queue: Receives raw Purview diagnostic logs via bridge
+//   - Dead-Letter Queues (DLQ): Automatically configured for failed messages
 //
 // MVP: Public endpoints, secured via Managed Identity and RBAC.
 // FUTURE: Consider Private Endpoints and advanced features (sessions, duplicate
@@ -26,8 +27,11 @@ param tags object
 @allowed(['Basic', 'Standard', 'Premium'])
 param serviceBusSku string = 'Standard'
 
-@description('Main queue name')
+@description('Enrichment pipeline queue name')
 param mainQueueName string = 'enrichment-requests'
+
+@description('Purview diagnostic events queue name')
+param purviewEventsQueueName string = 'purview-events'
 
 @description('Max delivery count before moving to DLQ')
 param maxDeliveryCount int = 10
@@ -84,6 +88,32 @@ resource mainQueue 'Microsoft.ServiceBus/namespaces/queues@2022-10-01-preview' =
 }
 
 // =============================================================================
+// PURVIEW EVENTS QUEUE
+// =============================================================================
+// Receives raw Purview diagnostic logs forwarded by the HeuristicTriggerBridge.
+// Separates diagnostic telemetry from the enrichment pipeline to avoid
+// polluting enrichment-requests with ScanStatusLogEvent payloads.
+//
+// DLQ Path: {queueName}/$DeadLetterQueue
+// =============================================================================
+
+resource purviewEventsQueue 'Microsoft.ServiceBus/namespaces/queues@2022-10-01-preview' = {
+  parent: serviceBusNamespace
+  name: purviewEventsQueueName
+  properties: {
+    maxDeliveryCount: maxDeliveryCount
+    defaultMessageTimeToLive: messageTtl
+    deadLetteringOnMessageExpiration: true
+    enableBatchedOperations: true
+    requiresDuplicateDetection: false
+    requiresSession: false
+    enablePartitioning: false
+    lockDuration: 'PT5M'
+    maxSizeInMegabytes: 1024
+  }
+}
+
+// =============================================================================
 // AUTHORIZATION RULES (Optional)
 // =============================================================================
 // For MVP, we rely on Managed Identity and RBAC.
@@ -111,6 +141,9 @@ output mainQueueName string = mainQueue.name
 
 @description('Dead-letter queue path (auto-created by Azure)')
 output deadLetterQueuePath string = '${mainQueue.name}/$DeadLetterQueue'
+
+@description('Purview events queue name')
+output purviewEventsQueueName string = purviewEventsQueue.name
 
 @description('System-assigned Managed Identity principal ID')
 output managedIdentityPrincipalId string = serviceBusNamespace.identity.principalId

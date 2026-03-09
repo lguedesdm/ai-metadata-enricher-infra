@@ -187,3 +187,6 @@ output mainQueueName string = messaging.outputs.mainQueueName
 
 @description('Dead-letter queue path')
 output deadLetterQueuePath string = messaging.outputs.deadLetterQueuePath
+
+@description('Purview events queue name')
+output purviewEventsQueueName string = messaging.outputs.purviewEventsQueueName
