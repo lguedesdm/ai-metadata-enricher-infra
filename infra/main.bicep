@@ -124,7 +124,7 @@ module cosmosAccountDb 'cosmos/account-db.bicep' = {
   scope: resourceGroup
   params: {
     cosmosAccountName: 'cosmos-ai-metadata-dev'
-    databaseName: 'metadata'
+    databaseName: 'metadata_enricher'
   }
 }
 
@@ -151,7 +151,7 @@ module cosmosContainers 'cosmos/containers.bicep' = if (deployCosmosContainers) 
   scope: resourceGroup
   params: {
     accountName: 'cosmos-ai-metadata-dev'
-    databaseName: 'metadata'
+    databaseName: 'metadata_enricher'
     partitionKeyPath: '/entityType'
   }
 }

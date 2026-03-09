@@ -4,7 +4,7 @@
 // Scope: Resource Group
 // SQL API (Core)
 // - Account: cosmos-ai-metadata-dev
-// - Database: metadata
+// - Database: metadata_enricher
 // - Throughput: Provisioned 400 RU/s at database level (shared)
 // - No containers, no TTL, no RBAC
 // =============================================================================
@@ -15,7 +15,7 @@
 param cosmosAccountName string = 'cosmos-ai-metadata-dev'
 
 @description('Logical database name')
-param databaseName string = 'metadata'
+param databaseName string = 'metadata_enricher'
 
 // =============================================================================
 // COSMOS DB ACCOUNT (EXISTING)

@@ -26,8 +26,8 @@ param searchSku string = 'basic'
 @description('Whether to deploy the unified index from the frozen schema JSON')
 param deployIndex bool = false
 
-@description('Unified index name (must be versioned and treated as a contract)')
-param indexName string = 'metadata-context-index-v1'
+@description('Unified index name (must match the canonical contract)')
+param indexName string = 'metadata-context-index'
 
 // =============================================================================
 // SEARCH SERVICE
@@ -68,7 +68,7 @@ resource searchService 'Microsoft.Search/searchServices@2023-11-01' = {
 var adminKeys = searchService.listAdminKeys()
 
 // Load schema content from a fixed, versioned path (compile-time constant)
-var indexSchemaContent = loadTextContent('./schemas/metadata-context-index-v1.json')
+var indexSchemaContent = loadTextContent('./schemas/metadata-context-index.json')
 
 // User-assigned managed identity required by deploymentScripts
 resource scriptIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = if (deployIndex) {
