@@ -40,7 +40,7 @@ param messageTtl string = 'P7D'  // 7 days
 // =============================================================================
 
 resource serviceBusNamespace 'Microsoft.ServiceBus/namespaces@2022-10-01-preview' = {
-  name: '${resourcePrefix}-sb'
+  name: '${resourcePrefix}-sbus'
   location: location
   tags: tags
   sku: {

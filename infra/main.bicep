@@ -152,17 +152,17 @@ module cosmosContainers 'cosmos/containers.bicep' = if (deployCosmosContainers) 
 // =============================================================================
 // MESSAGING MODULE
 // =============================================================================
-// BLOCKED: Pertence à task "Provision Service Bus"
-// module messaging 'messaging/main.bicep' = {
-//   name: 'messaging-deployment'
-//   scope: resourceGroup
-//   params: {
-//     resourcePrefix: core.outputs.resourcePrefix
-//     location: core.outputs.resourceLocation
-//     tags: core.outputs.resourceTags
-//     serviceBusSku: serviceBusSku
-//   }
-// }
+
+module messaging 'messaging/main.bicep' = {
+  name: 'messaging-deployment'
+  scope: resourceGroup
+  params: {
+    resourcePrefix: core.outputs.resourcePrefix
+    location: core.outputs.resourceLocation
+    tags: core.outputs.resourceTags
+    serviceBusSku: serviceBusSku
+  }
+}
 
 // =============================================================================
 // OUTPUTS
@@ -176,14 +176,14 @@ output resourceGroupName string = resourceGroup.name
 @description('Cosmos DB account name')
 output cosmosAccountName string = cosmosAccountDb.outputs.cosmosAccountName
 
-// @description('Service Bus namespace name')
-// output serviceBusNamespaceName string = messaging.outputs.serviceBusNamespaceName
+@description('Service Bus namespace name')
+output serviceBusNamespaceName string = messaging.outputs.serviceBusNamespaceName
 
-// @description('Service Bus endpoint')
-// output serviceBusEndpoint string = messaging.outputs.serviceBusEndpoint
+@description('Service Bus endpoint')
+output serviceBusEndpoint string = messaging.outputs.serviceBusEndpoint
 
-// @description('Main queue name')
-// output mainQueueName string = messaging.outputs.mainQueueName
+@description('Main queue name')
+output mainQueueName string = messaging.outputs.mainQueueName
 
-// @description('Dead-letter queue path')
-// output deadLetterQueuePath string = messaging.outputs.deadLetterQueuePath
+@description('Dead-letter queue path')
+output deadLetterQueuePath string = messaging.outputs.deadLetterQueuePath
