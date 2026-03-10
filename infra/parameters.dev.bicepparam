@@ -67,4 +67,4 @@ param deployOpenAI = true              // Enable Azure OpenAI (required for LLM 
 param openAiDeploymentName = 'gpt-4o'  // GPT deployment name — matches AZURE_OPENAI_DEPLOYMENT_NAME env var
 param deployCompute = true    // Enable Orchestrator Container App
 param deployRegistry = true  // Enable Azure Container Registry
-param containerImage = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'  // Placeholder until real image is pushed to ACR
+param containerImage = 'craimetadatadev.azurecr.io/ai-metadata-orchestrator:dev'
