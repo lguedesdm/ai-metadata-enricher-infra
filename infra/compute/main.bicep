@@ -50,6 +50,9 @@ param tags object
 @description('Container image reference (e.g. <acr>.azurecr.io/ai-metadata-orchestrator:dev). Leave empty for placeholder deployment.')
 param containerImage string = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
 
+@description('ACR login server (e.g. craimetadatadev.azurecr.io). When provided, the Container App uses its system MI to pull from this registry.')
+param acrServer string = ''
+
 @description('Fully qualified Service Bus namespace (e.g. ai-metadata-dev-sbus.servicebus.windows.net). Used for MI-based authentication.')
 param serviceBusNamespaceFqdn string
 
@@ -134,6 +137,15 @@ resource orchestratorApp 'Microsoft.App/containerApps@2024-03-01' = {
       // No secrets block — all service authentication uses Managed Identity.
       // Connection strings and SAS tokens are prohibited by the security model.
       secrets: []
+
+      // ACR pull via system MI — no admin credentials or pull secrets.
+      // Requires AcrPull role on the registry (provisioned by registry/acr-rbac.bicep).
+      registries: empty(acrServer) ? [] : [
+        {
+          server: acrServer
+          identity: 'system'
+        }
+      ]
     }
 
     template: {

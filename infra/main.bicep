@@ -107,6 +107,9 @@ param openAiCapacityThousands int = 10
 @description('Microsoft Purview account name. Leave empty until Purview is provisioned.')
 param purviewAccountName string = ''
 
+@description('Deploy Azure Container Registry module')
+param deployRegistry bool = false
+
 @description('Deploy Observability module (Log Analytics workspace + Application Insights)')
 param deployObservability bool = false
 
@@ -288,6 +291,25 @@ module messaging 'messaging/main.bicep' = {
 }
 
 // =============================================================================
+// AZURE CONTAINER REGISTRY MODULE
+// =============================================================================
+// Provisions the ACR that stores the Orchestrator container image.
+//
+// When deployRegistry=true:
+//   - acrLoginServer is auto-wired into compute (registries block)
+//   - acrRbac grants AcrPull to the orchestrator MI after compute is deployed
+
+module registry 'registry/main.bicep' = if (deployRegistry) {
+  name: 'registry-deployment'
+  scope: resourceGroup
+  params: {
+    resourcePrefix: core.outputs.resourcePrefix
+    location: core.outputs.resourceLocation
+    tags: core.outputs.resourceTags
+  }
+}
+
+// =============================================================================
 // OBSERVABILITY MODULE
 // =============================================================================
 // Provisions Log Analytics workspace and Application Insights for operational
@@ -368,6 +390,7 @@ module compute 'compute/main.bicep' = if (deployCompute) {
     containerImage: containerImage
     serviceBusNamespaceFqdn: '${messaging.outputs.serviceBusNamespaceName}.servicebus.windows.net'
     cosmosEndpoint: cosmosAccountDb.outputs.cosmosEndpoint
+    acrServer: deployRegistry ? registry.outputs.acrLoginServer : ''
     searchEndpoint: deploySearch ? search.outputs.searchEndpoint : searchEndpoint
     openAiEndpoint: deployOpenAI ? openAi.outputs.openAiEndpoint : openAiEndpoint
     openAiDeploymentName: deployOpenAI ? openAi.outputs.deploymentName : openAiDeploymentName
@@ -478,6 +501,27 @@ module openAiRbac 'openai/openai-rbac.bicep' = {
 }
 
 // =============================================================================
+// ACR RBAC MODULE
+// =============================================================================
+// Grants the Orchestrator Container App's Managed Identity the AcrPull role
+// so it can pull container images using its system MI — no admin credentials.
+//
+// Declared separately from registry/main.bicep to avoid a circular dependency:
+// compute sources acrLoginServer from the registry module.
+//
+// ACR name is sourced from the registry module when deployRegistry=true,
+// or from the cr{sanitized-prefix} naming convention for prior deployments.
+
+module acrRbac 'registry/acr-rbac.bicep' = {
+  name: 'acr-rbac-deployment'
+  scope: resourceGroup
+  params: {
+    acrName: deployRegistry ? registry.outputs.acrName : 'cr${take(replace(core.outputs.resourcePrefix, '-', ''), 20)}'
+    orchestratorPrincipalId: deployCompute ? compute.outputs.managedIdentityPrincipalId : orchestratorPrincipalId
+  }
+}
+
+// =============================================================================
 // OUTPUTS
 // =============================================================================
 // These outputs provide key resource identifiers and endpoints for validation
@@ -530,6 +574,12 @@ output bridgeFunctionAppName string = deployFunctions ? functions.outputs.functi
 
 @description('Bridge Function App Managed Identity principal ID (empty when deployFunctions=false)')
 output bridgeManagedIdentityPrincipalId string = deployFunctions ? functions.outputs.managedIdentityPrincipalId : ''
+
+@description('ACR login server (empty when deployRegistry=false)')
+output acrLoginServer string = deployRegistry ? registry.outputs.acrLoginServer : ''
+
+@description('ACR name (empty when deployRegistry=false)')
+output acrName string = deployRegistry ? registry.outputs.acrName : ''
 
 @description('Log Analytics workspace name (empty when deployObservability=false)')
 output logAnalyticsWorkspaceName string = deployObservability ? observability.outputs.logAnalyticsWorkspaceName : ''
