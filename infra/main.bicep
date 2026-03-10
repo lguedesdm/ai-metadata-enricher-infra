@@ -107,6 +107,9 @@ param openAiCapacityThousands int = 10
 @description('Microsoft Purview account name. Leave empty until Purview is provisioned.')
 param purviewAccountName string = ''
 
+@description('Declare Purview dependency — validates the account exists and outputs the endpoint. Set true only after the Purview account is pre-provisioned.')
+param deployPurview bool = false
+
 @description('Deploy Azure Container Registry module')
 param deployRegistry bool = false
 
@@ -287,6 +290,28 @@ module messaging 'messaging/main.bicep' = {
     location: core.outputs.resourceLocation
     tags: core.outputs.resourceTags
     serviceBusSku: serviceBusSku
+  }
+}
+
+// =============================================================================
+// PURVIEW DEPENDENCY MODULE
+// =============================================================================
+// Validates the pre-provisioned Purview account exists at deploy time.
+// Does NOT create the account — Purview must be provisioned separately.
+//
+// RBAC NOTE: The orchestrator MI requires the "Purview Data Curator" collection
+// role, which cannot be assigned via ARM. Run once after provisioning:
+//
+//   az purview account add-root-collection-admin \
+//     --account-name <purviewAccountName> \
+//     --resource-group <resourceGroup> \
+//     --object-id <orchestratorManagedIdentityPrincipalId>
+
+module purview 'purview/main.bicep' = if (deployPurview) {
+  name: 'purview-dependency'
+  scope: resourceGroup
+  params: {
+    purviewAccountName: purviewAccountName
   }
 }
 
