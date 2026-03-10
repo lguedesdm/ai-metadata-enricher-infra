@@ -56,7 +56,7 @@ resource serviceBusNamespace 'Microsoft.ServiceBus/namespaces@2022-10-01-preview
   }
   properties: {
     publicNetworkAccess: 'Enabled'  // MVP: Public endpoints for Dev
-    disableLocalAuth: false  // MVP: Allow connection strings for Dev (disable in Prod)
+    disableLocalAuth: true   // INF-012: Enforce MI-only auth — SAS keys and connection strings disabled at platform level
     zoneRedundant: false  // MVP: No zone redundancy for Dev
   }
 }
@@ -114,13 +114,11 @@ resource purviewEventsQueue 'Microsoft.ServiceBus/namespaces/queues@2022-10-01-p
 }
 
 // =============================================================================
-// AUTHORIZATION RULES (Optional)
+// AUTHORIZATION RULES
 // =============================================================================
-// For MVP, we rely on Managed Identity and RBAC.
-// Shared Access Signatures (SAS) are available for backward compatibility
-// but should be avoided in production.
-//
-// FUTURE: Remove SAS policies in Test/Prod and use RBAC exclusively.
+// disableLocalAuth=true (INF-012) disables all SAS-based authentication at the
+// namespace level. Only RBAC via Managed Identity is accepted.
+// No SAS authorization rules are provisioned.
 // =============================================================================
 
 // =============================================================================
