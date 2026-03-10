@@ -107,6 +107,14 @@ param openAiCapacityThousands int = 10
 @description('Microsoft Purview account name. Leave empty until Purview is provisioned.')
 param purviewAccountName string = ''
 
+@description('Deploy Observability module (Log Analytics workspace + Application Insights)')
+param deployObservability bool = false
+
+@description('Log Analytics log retention in days (min 30, max 730). Dev default: 30.')
+@minValue(30)
+@maxValue(730)
+param logRetentionDays int = 30
+
 @description('Deploy Event Hub module (Namespace + purview-diagnostics hub + consumer group)')
 param deployEventHub bool = false
 
@@ -280,6 +288,32 @@ module messaging 'messaging/main.bicep' = {
 }
 
 // =============================================================================
+// OBSERVABILITY MODULE
+// =============================================================================
+// Provisions Log Analytics workspace and Application Insights for operational
+// telemetry and log aggregation.
+//
+// When deployObservability=true:
+//   - Log Analytics workspace is linked to the CAE via appLogsConfiguration
+//     (routes Container App stdout/stderr JSON logs to the workspace)
+//   - Application Insights connection string is wired into compute env vars
+//     (enables configure_azure_monitor() in the orchestrator)
+//
+// The Log Analytics shared key is retrieved via listKeys() here in main.bicep
+// and passed as @secure() to the compute module — it never appears in outputs.
+
+module observability 'observability/main.bicep' = if (deployObservability) {
+  name: 'observability-deployment'
+  scope: resourceGroup
+  params: {
+    resourcePrefix: core.outputs.resourcePrefix
+    location: core.outputs.resourceLocation
+    tags: core.outputs.resourceTags
+    retentionDays: logRetentionDays
+  }
+}
+
+// =============================================================================
 // AZURE OPENAI MODULE
 // =============================================================================
 // Provisions the Azure OpenAI account, GPT model deployment, and the
@@ -338,6 +372,9 @@ module compute 'compute/main.bicep' = if (deployCompute) {
     openAiEndpoint: deployOpenAI ? openAi.outputs.openAiEndpoint : openAiEndpoint
     openAiDeploymentName: deployOpenAI ? openAi.outputs.deploymentName : openAiDeploymentName
     purviewAccountName: purviewAccountName
+    logAnalyticsWorkspaceCustomerId: deployObservability ? observability.outputs.logAnalyticsCustomerId : ''
+    logAnalyticsSharedKey: deployObservability ? listKeys(observability.outputs.logAnalyticsWorkspaceId, '2023-09-01').primarySharedKey : ''
+    appInsightsConnectionString: deployObservability ? observability.outputs.appInsightsConnectionString : ''
   }
 }
 
@@ -493,6 +530,12 @@ output bridgeFunctionAppName string = deployFunctions ? functions.outputs.functi
 
 @description('Bridge Function App Managed Identity principal ID (empty when deployFunctions=false)')
 output bridgeManagedIdentityPrincipalId string = deployFunctions ? functions.outputs.managedIdentityPrincipalId : ''
+
+@description('Log Analytics workspace name (empty when deployObservability=false)')
+output logAnalyticsWorkspaceName string = deployObservability ? observability.outputs.logAnalyticsWorkspaceName : ''
+
+@description('Application Insights name (empty when deployObservability=false)')
+output appInsightsName string = deployObservability ? observability.outputs.appInsightsName : ''
 
 @description('Azure OpenAI account name (empty when deployOpenAI=false)')
 output openAiAccountName string = deployOpenAI ? openAi.outputs.openAiAccountName : ''

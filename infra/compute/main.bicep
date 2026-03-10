@@ -71,16 +71,40 @@ param purviewAccountName string = ''
 @description('Environment identifier (dev, test, prod)')
 param environment string = 'dev'
 
+@description('Log Analytics workspace customer ID. When provided, Container Apps stdout/stderr logs are routed to the workspace.')
+param logAnalyticsWorkspaceCustomerId string = ''
+
+@description('Log Analytics workspace shared key (platform infrastructure config — routes CAE agent, not application auth). Leave empty to skip log routing.')
+@secure()
+param logAnalyticsSharedKey string = ''
+
+@description('Application Insights connection string. Set as APPLICATIONINSIGHTS_CONNECTION_STRING env var. Leave empty until observability is provisioned.')
+param appInsightsConnectionString string = ''
+
 // =============================================================================
 // CONTAINER APPS ENVIRONMENT
 // =============================================================================
-// MVP: No Log Analytics workspace — add appLogsConfiguration for Test/Prod.
+// Linked to Log Analytics when logAnalyticsWorkspaceCustomerId is provided.
+// This routes Container Apps stdout/stderr (JSON structured logs) to the
+// Log Analytics workspace for aggregation alongside App Insights telemetry.
+//
+// The sharedKey is a platform infrastructure credential used by the CAE agent
+// for log routing — it is not used by application code and is passed as a
+// @secure() param so it does not appear in deployment history.
 
 resource containerAppsEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
   name: 'cae-${resourcePrefix}'
   location: location
   tags: tags
-  properties: {}
+  properties: empty(logAnalyticsWorkspaceCustomerId) ? {} : {
+    appLogsConfiguration: {
+      destination: 'log-analytics'
+      logAnalyticsConfiguration: {
+        customerId: logAnalyticsWorkspaceCustomerId
+        sharedKey: logAnalyticsSharedKey
+      }
+    }
+  }
 }
 
 // =============================================================================
@@ -201,6 +225,18 @@ resource orchestratorApp 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'PURVIEW_ACCOUNT_NAME'
               value: purviewAccountName
+            }
+
+            // ------------------------------------------------------------------
+            // Application Insights — telemetry connection string
+            // Runtime reads: APPLICATIONINSIGHTS_CONNECTION_STRING (optional)
+            // When set: configure_azure_monitor() exports structured traces,
+            // metrics, and logs to the App Insights workspace.
+            // When empty: orchestrator falls back to stdout JSON logging only.
+            // ------------------------------------------------------------------
+            {
+              name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
+              value: appInsightsConnectionString
             }
 
             // ------------------------------------------------------------------
