@@ -63,17 +63,45 @@ resource searchService 'Microsoft.Search/searchServices@2023-11-01' = {
 // Implements the frozen unified index by consuming a versioned JSON schema in-repo.
 // Uses Azure CLI (az rest) to PUT the index to the search service to preserve
 // full fidelity for semantic/vector configurations.
-
-// Admin key to authenticate management-plane REST call
-var adminKeys = searchService.listAdminKeys()
+//
+// INF-013: Admin key authentication replaced with Managed Identity.
+// The deployment script's user-assigned MI acquires an Azure AD token for the
+// AI Search data-plane scope ("https://search.azure.com") and presents it as
+// a Bearer token. No admin keys are retrieved or stored.
+//
+// RBAC pre-requisite:
+//   scriptIdentitySearchRbac grants Search Index Data Contributor on the
+//   search service to the script MI before the deployment script runs.
 
 // Load schema content from a fixed, versioned path (compile-time constant)
 var indexSchemaContent = loadTextContent('./schemas/metadata-context-index.json')
+
+// Search Index Data Contributor — allows creating and updating indexes (data plane)
+var searchIndexDataContributorRoleId = '8ebe5a00-799e-43f5-93ac-243d3dce84a7'
 
 // User-assigned managed identity required by deploymentScripts
 resource scriptIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = if (deployIndex) {
   name: '${resourcePrefix}-search-index-script-mi'
   location: location
+}
+
+// =============================================================================
+// RBAC — Script MI → Search Index Data Contributor
+// =============================================================================
+// Grants the deployment script's MI permission to create and update indexes on
+// the search service via Azure AD token (no admin key required).
+//
+// Must be provisioned before the deployment script runs — enforced via
+// dependsOn on the createUnifiedIndex resource.
+
+resource scriptIdentitySearchRbac 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployIndex) {
+  name: guid(searchService.id, scriptIdentity.properties.principalId, searchIndexDataContributorRoleId)
+  scope: searchService
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', searchIndexDataContributorRoleId)
+    principalId: scriptIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+  }
 }
 
 @description('Create or update the unified Azure AI Search index from the JSON schema')
@@ -98,10 +126,6 @@ resource createUnifiedIndex 'Microsoft.Resources/deploymentScripts@2023-08-01' =
         value: searchService.name
       }
       {
-        name: 'SEARCH_ADMIN_KEY'
-        secureValue: adminKeys.primaryKey
-      }
-      {
         name: 'INDEX_NAME'
         value: indexName
       }
@@ -122,16 +146,23 @@ echo "$INDEX_JSON_B64" | base64 -d > "$tmpdir/index.json"
 
 url="https://${SEARCH_SERVICE_NAME}.search.windows.net/indexes/${INDEX_NAME}?api-version=${SEARCH_API_VERSION}"
 
+# Acquire an Azure AD access token for the AI Search data-plane scope using
+# the deployment script Managed Identity. No admin keys are used.
+token=$(az account get-access-token --resource "https://search.azure.com" --query accessToken -o tsv)
+
 echo "Creating/updating index: ${INDEX_NAME} on service: ${SEARCH_SERVICE_NAME}"
 az rest \
   --method put \
   --url "$url" \
-  --headers "Content-Type=application/json" "api-key=${SEARCH_ADMIN_KEY}" \
+  --headers "Content-Type=application/json" "Authorization=Bearer $token" \
   --body @"$tmpdir/index.json"
 
 echo "Index deployment completed."
 '''
   }
+  dependsOn: [
+    scriptIdentitySearchRbac    // RBAC must be active before the script calls the search data-plane
+  ]
 }
 
 // =============================================================================
