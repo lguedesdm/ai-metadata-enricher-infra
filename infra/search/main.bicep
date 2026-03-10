@@ -54,6 +54,14 @@ resource searchService 'Microsoft.Search/searchServices@2023-11-01' = {
     encryptionWithCmk: {
       enforcement: 'Unspecified'  // MVP: Platform-managed keys for Dev
     }
+    // Enable AAD token (RBAC) authentication alongside API keys.
+    // Required for the deployment script to call the Search data-plane using
+    // a Managed Identity Bearer token. Without this, all token requests return 403.
+    authOptions: {
+      aadOrApiKey: {
+        aadAuthFailureMode: 'http401WithBearerChallenge'
+      }
+    }
   }
 }
 
@@ -95,7 +103,7 @@ resource scriptIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-0
 // dependsOn on the createUnifiedIndex resource.
 
 resource scriptIdentitySearchRbac 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployIndex) {
-  name: guid(searchService.id, scriptIdentity.properties.principalId, searchIndexDataContributorRoleId)
+  name: guid(searchService.id, scriptIdentity.id, searchIndexDataContributorRoleId)
   scope: searchService
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', searchIndexDataContributorRoleId)
@@ -137,27 +145,47 @@ resource createUnifiedIndex 'Microsoft.Resources/deploymentScripts@2023-08-01' =
         name: 'SEARCH_API_VERSION'
         value: '2023-11-01'
       }
+      {
+        name: 'SCRIPT_MI_CLIENT_ID'
+        value: scriptIdentity!.properties.clientId
+      }
     ]
     scriptContent: '''
 set -euo pipefail
+
+# Explicitly authenticate with the User-Assigned MI so az commands use
+# the correct identity context inside the ACI container.
+az login --identity --username "$SCRIPT_MI_CLIENT_ID"
 
 tmpdir=$(mktemp -d)
 echo "$INDEX_JSON_B64" | base64 -d > "$tmpdir/index.json"
 
 url="https://${SEARCH_SERVICE_NAME}.search.windows.net/indexes/${INDEX_NAME}?api-version=${SEARCH_API_VERSION}"
 
-# Acquire an Azure AD access token for the AI Search data-plane scope using
-# the deployment script Managed Identity. No admin keys are used.
-token=$(az account get-access-token --resource "https://search.azure.com" --query accessToken -o tsv)
+MAX_RETRIES=5
+RETRY_WAIT=60
 
-echo "Creating/updating index: ${INDEX_NAME} on service: ${SEARCH_SERVICE_NAME}"
-az rest \
-  --method put \
-  --url "$url" \
-  --headers "Content-Type=application/json" "Authorization=Bearer $token" \
-  --body @"$tmpdir/index.json"
+for attempt in $(seq 1 $MAX_RETRIES); do
+  echo "Attempt $attempt/$MAX_RETRIES: deploying index ${INDEX_NAME}..."
 
-echo "Index deployment completed."
+  if az rest \
+    --method put \
+    --url "$url" \
+    --resource "https://search.azure.com" \
+    --headers "Content-Type=application/json" \
+    --body @"$tmpdir/index.json"; then
+    echo "Index deployment completed successfully."
+    exit 0
+  fi
+
+  if [ "$attempt" -lt "$MAX_RETRIES" ]; then
+    echo "Attempt $attempt failed. Waiting ${RETRY_WAIT}s..."
+    sleep $RETRY_WAIT
+  fi
+done
+
+echo "All $MAX_RETRIES attempts failed."
+exit 1
 '''
   }
   dependsOn: [

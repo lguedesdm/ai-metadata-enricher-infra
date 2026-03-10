@@ -212,7 +212,7 @@ var storageQueueDataContributorRoleId = '974c5e8b-45b9-4653-ba55-5f855dd0fb88'
 var storageTableDataContributorRoleId = '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3'
 
 resource storageBlobRbac 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(bridgeStorage.id, bridgeFunctionApp.identity.principalId, storageBlobDataContributorRoleId)
+  name: guid(bridgeStorage.id, bridgeFunctionApp.id, storageBlobDataContributorRoleId)
   scope: bridgeStorage
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageBlobDataContributorRoleId)
@@ -222,7 +222,7 @@ resource storageBlobRbac 'Microsoft.Authorization/roleAssignments@2022-04-01' = 
 }
 
 resource storageQueueRbac 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(bridgeStorage.id, bridgeFunctionApp.identity.principalId, storageQueueDataContributorRoleId)
+  name: guid(bridgeStorage.id, bridgeFunctionApp.id, storageQueueDataContributorRoleId)
   scope: bridgeStorage
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageQueueDataContributorRoleId)
@@ -232,7 +232,7 @@ resource storageQueueRbac 'Microsoft.Authorization/roleAssignments@2022-04-01' =
 }
 
 resource storageTableRbac 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(bridgeStorage.id, bridgeFunctionApp.identity.principalId, storageTableDataContributorRoleId)
+  name: guid(bridgeStorage.id, bridgeFunctionApp.id, storageTableDataContributorRoleId)
   scope: bridgeStorage
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageTableDataContributorRoleId)
@@ -258,7 +258,7 @@ resource eventHubNamespace 'Microsoft.EventHub/namespaces@2024-01-01' existing =
 }
 
 resource eventHubDataReceiverRbac 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(eventHubNamespace.id, bridgeFunctionApp.identity.principalId, eventHubsDataReceiverRoleId)
+  name: guid(eventHubNamespace.id, bridgeFunctionApp.id, eventHubsDataReceiverRoleId)
   scope: eventHubNamespace
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', eventHubsDataReceiverRoleId)

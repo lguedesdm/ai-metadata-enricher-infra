@@ -37,7 +37,7 @@ param storageSku = 'Standard_LRS'  // Locally redundant storage for Dev
 // =============================================================================
 
 param searchSku = 'basic'  // Basic tier for Azure AI Search in Dev per architecture
-param deploySearchIndex = true  // Enable unified index creation from the frozen schema JSON
+param deploySearchIndex = false  // Index already created manually (deployment script had auth issues in ACI)
 param deployStorage = false     // Do not deploy Storage in Phase 2
 param deploySearch = true       // Enable Azure AI Search (required for RAG)
 
@@ -54,8 +54,10 @@ param serviceBusSku = 'Standard'  // Standard tier for Dev (supports topics and 
 // EVENT HUB PARAMETERS
 // =============================================================================
 
-param deployEventHub = true    // Enable Event Hub (required for Purview → pipeline ingestion)
-param deployFunctions = true  // Enable Bridge Function (Event Hub → Service Bus forwarder)
+param deployEventHub = true     // Enable Event Hub (required for Purview → pipeline ingestion)
+param deployFunctions = false  // BLOCKED: subscription has 0 quota for Dynamic (Consumption Y1) VMs in East US
+                               // Request quota at: portal.azure.com > Subscriptions > Usage + quotas
+                               // Re-enable once quota is granted.
 
 // =============================================================================
 // COMPUTE PARAMETERS
@@ -65,4 +67,4 @@ param deployOpenAI = true              // Enable Azure OpenAI (required for LLM 
 param openAiDeploymentName = 'gpt-4o'  // GPT deployment name — matches AZURE_OPENAI_DEPLOYMENT_NAME env var
 param deployCompute = true    // Enable Orchestrator Container App
 param deployRegistry = true  // Enable Azure Container Registry
-param containerImage = 'craimetadatadev.azurecr.io/ai-metadata-orchestrator:dev'
+param containerImage = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'  // Placeholder until real image is pushed to ACR

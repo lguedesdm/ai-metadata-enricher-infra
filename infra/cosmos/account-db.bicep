@@ -53,12 +53,13 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2023-11-15' = {
     ]
     publicNetworkAccess: 'Enabled'          // MVP: Public endpoints for Dev
     enableAutomaticFailover: false          // MVP: Disabled for Dev
-    enableFreeTier: false
-    capabilities: [
-      {
-        name: 'EnableServerless'            // MVP: Serverless for cost-optimised Dev
-      }
-    ]
+    enableFreeTier: true                    // Must match the existing account — immutable after creation
+    // capabilities: EnableServerless — set at account creation time only.
+    // Azure rejects any PUT that includes the capabilities array on an existing
+    // serverless account ("Update of EnableServerless capability is not allowed").
+    // For green-field deployments, create the account first with:
+    //   az cosmosdb create ... --capabilities EnableServerless
+    // The serverless mode is immutable and will be preserved across re-deployments.
   }
 }
 
