@@ -56,3 +56,4 @@ param serviceBusSku = 'Standard'  // Standard tier for Dev (supports topics and 
 
 param deployCompute = true    // Enable Orchestrator Container App
 param deployRegistry = true  // Enable Azure Container Registry
+param containerImage = 'craimetadatadev.azurecr.io/ai-metadata-orchestrator:dev'
