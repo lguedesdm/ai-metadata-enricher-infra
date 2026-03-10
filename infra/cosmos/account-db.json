@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.39.26.7824",
-      "templateHash": "15811110860406366552"
+      "templateHash": "inf006-account-db-reprovisioned"
     }
   },
   "parameters": {
@@ -13,12 +13,24 @@
       "type": "string",
       "defaultValue": "cosmos-ai-metadata-dev",
       "metadata": {
-        "description": "Cosmos DB account name (fixed for DEV)"
+        "description": "Cosmos DB account name"
+      }
+    },
+    "location": {
+      "type": "string",
+      "metadata": {
+        "description": "Azure region for the Cosmos DB account"
+      }
+    },
+    "tags": {
+      "type": "object",
+      "metadata": {
+        "description": "Tags to apply to all resources"
       }
     },
     "databaseName": {
       "type": "string",
-      "defaultValue": "metadata",
+      "defaultValue": "metadata_enricher",
       "metadata": {
         "description": "Logical database name"
       }
@@ -26,17 +38,49 @@
   },
   "resources": [
     {
+      "type": "Microsoft.DocumentDB/databaseAccounts",
+      "apiVersion": "2023-11-15",
+      "name": "[parameters('cosmosAccountName')]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "kind": "GlobalDocumentDB",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "databaseAccountOfferType": "Standard",
+        "consistencyPolicy": {
+          "defaultConsistencyLevel": "Session"
+        },
+        "locations": [
+          {
+            "locationName": "[parameters('location')]",
+            "failoverPriority": 0,
+            "isZoneRedundant": false
+          }
+        ],
+        "publicNetworkAccess": "Enabled",
+        "enableAutomaticFailover": false,
+        "enableFreeTier": false,
+        "capabilities": [
+          {
+            "name": "EnableServerless"
+          }
+        ]
+      }
+    },
+    {
       "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases",
       "apiVersion": "2023-11-15",
       "name": "[format('{0}/{1}', parameters('cosmosAccountName'), parameters('databaseName'))]",
       "properties": {
         "resource": {
           "id": "[parameters('databaseName')]"
-        },
-        "options": {
-          "throughput": 400
         }
-      }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('cosmosAccountName'))]"
+      ]
     }
   ],
   "outputs": {
@@ -47,12 +91,26 @@
       },
       "value": "[parameters('cosmosAccountName')]"
     },
+    "cosmosEndpoint": {
+      "type": "string",
+      "metadata": {
+        "description": "Cosmos DB account endpoint — use for MI-based client configuration"
+      },
+      "value": "[reference(resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('cosmosAccountName')), '2023-11-15').documentEndpoint]"
+    },
     "databaseName": {
       "type": "string",
       "metadata": {
         "description": "Database name"
       },
       "value": "[parameters('databaseName')]"
+    },
+    "managedIdentityPrincipalId": {
+      "type": "string",
+      "metadata": {
+        "description": "System-assigned Managed Identity principal ID"
+      },
+      "value": "[reference(resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('cosmosAccountName')), '2023-11-15', 'full').identity.principalId]"
     }
   }
 }

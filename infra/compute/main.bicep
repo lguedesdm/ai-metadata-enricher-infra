@@ -1,0 +1,244 @@
+// =============================================================================
+// Compute Module — Orchestrator (Container Apps)
+// =============================================================================
+// Purpose: Provisions the Container Apps Environment and the Enrichment
+// Orchestrator Container App for the AI Metadata Enricher platform.
+//
+// Resources created:
+//   - Container Apps Environment  (cae-{resourcePrefix})
+//   - Orchestrator Container App  (ca-orchestrator-{resourcePrefix})
+//     └── System-Assigned Managed Identity
+//     └── Environment variables (all connections via Managed Identity)
+//
+// Security model:
+//   All downstream service connections use Managed Identity — no secrets,
+//   connection strings, or SAS tokens are provisioned here.
+//
+// RBAC post-deploy (handled by messaging/servicebus-rbac.bicep):
+//   The managedIdentityPrincipalId output must be wired into the
+//   servicebus-rbac module as orchestratorPrincipalId so the Container App
+//   can receive messages from the enrichment-requests queue.
+//
+// MVP constraints:
+//   - No Log Analytics workspace (Dev only — add for Test/Prod)
+//   - No ingress (background worker, not a web service)
+//   - Single replica (scale 1–1 for Dev determinism)
+//   - Minimum resources: 0.25 vCPU / 0.5Gi
+//
+// Canonical resource names embedded as literals (frozen contracts):
+//   Service Bus queue  : enrichment-requests
+//   Cosmos database    : metadata_enricher
+//   Cosmos state       : state
+//   Cosmos audit       : audit
+//   AI Search index    : metadata-context-index
+//   Semantic config    : default-semantic-config
+// =============================================================================
+
+// =============================================================================
+// PARAMETERS
+// =============================================================================
+
+@description('Resource name prefix (e.g. ai-metadata-dev)')
+param resourcePrefix string
+
+@description('Azure region for all resources')
+param location string
+
+@description('Tags to apply to all resources')
+param tags object
+
+@description('Container image reference (e.g. <acr>.azurecr.io/ai-metadata-orchestrator:dev). Leave empty for placeholder deployment.')
+param containerImage string = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
+
+@description('Fully qualified Service Bus namespace (e.g. ai-metadata-dev-sbus.servicebus.windows.net). Used for MI-based authentication.')
+param serviceBusNamespaceFqdn string
+
+@description('Cosmos DB account endpoint (e.g. https://cosmos-ai-metadata-dev.documents.azure.com:443/). Used for MI-based authentication.')
+param cosmosEndpoint string
+
+@description('Azure AI Search endpoint (e.g. https://ai-metadata-dev-search.search.windows.net). Leave empty until Search is deployed.')
+param searchEndpoint string = ''
+
+@description('Azure OpenAI endpoint (e.g. https://oai-ai-metadata-dev.openai.azure.com/). Leave empty until Azure OpenAI is provisioned.')
+param openAiEndpoint string = ''
+
+@description('Azure OpenAI deployment name (e.g. gpt-4). Leave empty until Azure OpenAI is provisioned.')
+param openAiDeploymentName string = ''
+
+@description('Microsoft Purview account name (e.g. purview-ai-metadata-dev). Leave empty until Purview is provisioned.')
+param purviewAccountName string = ''
+
+@description('Environment identifier (dev, test, prod)')
+param environment string = 'dev'
+
+// =============================================================================
+// CONTAINER APPS ENVIRONMENT
+// =============================================================================
+// MVP: No Log Analytics workspace — add appLogsConfiguration for Test/Prod.
+
+resource containerAppsEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
+  name: 'cae-${resourcePrefix}'
+  location: location
+  tags: tags
+  properties: {}
+}
+
+// =============================================================================
+// ORCHESTRATOR CONTAINER APP
+// =============================================================================
+// Background worker — no ingress, no secrets, all connections via MI.
+
+resource orchestratorApp 'Microsoft.App/containerApps@2024-03-01' = {
+  name: 'ca-orchestrator-${resourcePrefix}'
+  location: location
+  tags: union(tags, { component: 'orchestrator' })
+
+  // System-Assigned Managed Identity.
+  // The principal ID is exported so messaging/servicebus-rbac.bicep can
+  // assign the Azure Service Bus Data Receiver role.
+  identity: {
+    type: 'SystemAssigned'
+  }
+
+  properties: {
+    environmentId: containerAppsEnv.id
+
+    configuration: {
+      // No HTTP ingress — this is a Service Bus consumer, not a web service.
+      ingress: null
+
+      // No secrets block — all service authentication uses Managed Identity.
+      // Connection strings and SAS tokens are prohibited by the security model.
+      secrets: []
+    }
+
+    template: {
+      containers: [
+        {
+          name: 'orchestrator'
+          image: containerImage
+          resources: {
+            cpu: json('0.25')   // MVP: minimum viable allocation for Dev
+            memory: '0.5Gi'
+          }
+
+          env: [
+            // ------------------------------------------------------------------
+            // Azure Service Bus — MI authentication
+            // Runtime reads: SERVICE_BUS_NAMESPACE (required)
+            // ------------------------------------------------------------------
+            {
+              name: 'SERVICE_BUS_NAMESPACE'
+              value: serviceBusNamespaceFqdn
+            }
+            {
+              name: 'SERVICE_BUS_QUEUE_NAME'
+              value: 'enrichment-requests'    // canonical: runtime_architecture_contract.yaml
+            }
+
+            // ------------------------------------------------------------------
+            // Azure Cosmos DB — MI authentication
+            // Runtime reads: COSMOS_ENDPOINT (required), COSMOS_DATABASE_NAME,
+            //                COSMOS_STATE_CONTAINER, COSMOS_AUDIT_CONTAINER
+            // ------------------------------------------------------------------
+            {
+              name: 'COSMOS_ENDPOINT'
+              value: cosmosEndpoint
+            }
+            {
+              name: 'COSMOS_DATABASE_NAME'
+              value: 'metadata_enricher'      // canonical: runtime_architecture_contract.yaml
+            }
+            {
+              name: 'COSMOS_STATE_CONTAINER'
+              value: 'state'                  // canonical: runtime_architecture_contract.yaml
+            }
+            {
+              name: 'COSMOS_AUDIT_CONTAINER'
+              value: 'audit'                  // canonical: runtime_architecture_contract.yaml
+            }
+
+            // ------------------------------------------------------------------
+            // Azure AI Search — MI authentication
+            // Runtime reads: AZURE_SEARCH_ENDPOINT (required for RAG),
+            //                AZURE_SEARCH_INDEX_NAME, AZURE_SEARCH_SEMANTIC_CONFIG
+            // ------------------------------------------------------------------
+            {
+              name: 'AZURE_SEARCH_ENDPOINT'
+              value: searchEndpoint
+            }
+            {
+              name: 'AZURE_SEARCH_INDEX_NAME'
+              value: 'metadata-context-index'         // canonical: runtime_architecture_contract.yaml
+            }
+            {
+              name: 'AZURE_SEARCH_SEMANTIC_CONFIG'
+              value: 'default-semantic-config'        // frozen: infra/search/schemas/metadata-context-index.json
+            }
+
+            // ------------------------------------------------------------------
+            // Azure OpenAI — MI authentication
+            // Runtime reads: AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_DEPLOYMENT_NAME,
+            //                AZURE_OPENAI_API_VERSION
+            // ------------------------------------------------------------------
+            {
+              name: 'AZURE_OPENAI_ENDPOINT'
+              value: openAiEndpoint
+            }
+            {
+              name: 'AZURE_OPENAI_DEPLOYMENT_NAME'
+              value: openAiDeploymentName
+            }
+            {
+              name: 'AZURE_OPENAI_API_VERSION'
+              value: '2024-06-01'
+            }
+
+            // ------------------------------------------------------------------
+            // Microsoft Purview — MI authentication
+            // Runtime reads: PURVIEW_ACCOUNT_NAME
+            // ------------------------------------------------------------------
+            {
+              name: 'PURVIEW_ACCOUNT_NAME'
+              value: purviewAccountName
+            }
+
+            // ------------------------------------------------------------------
+            // Runtime context
+            // ------------------------------------------------------------------
+            {
+              name: 'ENVIRONMENT'
+              value: environment
+            }
+          ]
+        }
+      ]
+
+      // MVP: Single replica for deterministic Dev behaviour.
+      // FUTURE: Scale by Service Bus queue depth for Test/Prod.
+      scale: {
+        minReplicas: 1
+        maxReplicas: 1
+      }
+    }
+  }
+}
+
+// =============================================================================
+// OUTPUTS
+// =============================================================================
+
+@description('Container Apps Environment resource ID')
+output containerAppsEnvironmentId string = containerAppsEnv.id
+
+@description('Container Apps Environment name')
+output containerAppsEnvironmentName string = containerAppsEnv.name
+
+@description('Orchestrator Container App name')
+output containerAppName string = orchestratorApp.name
+
+@description('Orchestrator Container App resource ID')
+output containerAppId string = orchestratorApp.id
+
+@description('System-assigned Managed Identity principal ID — wire into servicebus-rbac.bicep as orchestratorPrincipalId')
+output managedIdentityPrincipalId string = orchestratorApp.identity.principalId

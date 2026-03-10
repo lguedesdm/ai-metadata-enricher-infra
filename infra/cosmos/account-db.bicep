@@ -2,32 +2,72 @@
 // Cosmos DB Account + Database (DEV)
 // =============================================================================
 // Scope: Resource Group
-// SQL API (Core)
-// - Account: cosmos-ai-metadata-dev
-// - Database: metadata_enricher
-// - Throughput: Provisioned 400 RU/s at database level (shared)
-// - No containers, no TTL, no RBAC
+// SQL API (Core / NoSQL)
+//
+// - Account : cosmos-ai-metadata-dev  (fully managed by IaC — no manual pre-creation)
+// - Database : metadata_enricher
+// - Mode     : Serverless (cost-optimised for Dev)
+// - Consistency: Session
+// - Identity : System-Assigned Managed Identity
+// - Auth     : Managed Identity only — no connection strings
+//
+// INF-006: Replaced 'existing' reference with a full resource declaration so
+// that the deployment is self-contained and reproducible from zero.
 // =============================================================================
 
-// Location and tags are not used when referencing existing account
-
-@description('Cosmos DB account name (fixed for DEV)')
+@description('Cosmos DB account name')
 param cosmosAccountName string = 'cosmos-ai-metadata-dev'
+
+@description('Azure region for the Cosmos DB account')
+param location string
+
+@description('Tags to apply to all resources')
+param tags object
 
 @description('Logical database name')
 param databaseName string = 'metadata_enricher'
 
 // =============================================================================
-// COSMOS DB ACCOUNT (EXISTING)
+// COSMOS DB ACCOUNT
 // =============================================================================
 
-resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2023-11-15' existing = {
+resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2023-11-15' = {
   name: cosmosAccountName
+  location: location
+  tags: tags
+  kind: 'GlobalDocumentDB'
+  identity: {
+    type: 'SystemAssigned'
+  }
+  properties: {
+    databaseAccountOfferType: 'Standard'
+    consistencyPolicy: {
+      defaultConsistencyLevel: 'Session'    // Balance between consistency and performance
+    }
+    locations: [
+      {
+        locationName: location
+        failoverPriority: 0
+        isZoneRedundant: false              // MVP: No zone redundancy for Dev
+      }
+    ]
+    publicNetworkAccess: 'Enabled'          // MVP: Public endpoints for Dev
+    enableAutomaticFailover: false          // MVP: Disabled for Dev
+    enableFreeTier: false
+    capabilities: [
+      {
+        name: 'EnableServerless'            // MVP: Serverless for cost-optimised Dev
+      }
+    ]
+  }
 }
 
 // =============================================================================
-// DATABASE (WITH SHARED PROVISIONED THROUGHPUT)
+// DATABASE
 // =============================================================================
+// Serverless Cosmos DB does not support provisioned throughput — the options
+// block is intentionally omitted. Setting throughput on a serverless account
+// would cause a deployment error.
 
 resource database 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2023-11-15' = {
   parent: cosmosAccount
@@ -35,9 +75,6 @@ resource database 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2023-11-15
   properties: {
     resource: {
       id: databaseName
-    }
-    options: {
-      throughput: 400
     }
   }
 }
@@ -49,5 +86,11 @@ resource database 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2023-11-15
 @description('Cosmos DB account name')
 output cosmosAccountName string = cosmosAccount.name
 
+@description('Cosmos DB account endpoint — use for MI-based client configuration')
+output cosmosEndpoint string = cosmosAccount.properties.documentEndpoint
+
 @description('Database name')
 output databaseName string = database.name
+
+@description('System-assigned Managed Identity principal ID')
+output managedIdentityPrincipalId string = cosmosAccount.identity.principalId

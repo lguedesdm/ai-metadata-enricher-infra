@@ -12,6 +12,9 @@
 //   - Azure AI Search (search service and index)
 //   - Messaging (Service Bus queues)
 //   - Messaging RBAC (Service Bus role assignments for bridge and orchestrator)
+//   - Compute (Container Apps Environment + Orchestrator Container App)
+//   - Event Hub (Namespace + purview-diagnostics hub + bridge consumer group)
+//   - Functions (Purview Bridge Function App + plan + backing storage)
 //
 // Usage:
 //   az deployment sub create \
@@ -67,8 +70,55 @@ param deployCosmosContainers bool = false
 @description('Principal ID of the Purview Bridge Managed Identity. Leave empty until the Function App is provisioned.')
 param bridgePrincipalId string = ''
 
-@description('Principal ID of the Orchestrator Managed Identity. Leave empty until the Container App is provisioned.')
+@description('Principal ID of the Orchestrator Managed Identity. Leave empty — populated automatically when deployCompute=true.')
 param orchestratorPrincipalId string = ''
+
+@description('Deploy Compute module (Container Apps Environment + Orchestrator Container App)')
+param deployCompute bool = false
+
+@description('Container image reference for the Orchestrator. Required when deployCompute=true.')
+param containerImage string = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
+
+@description('Azure AI Search endpoint. Required when deployCompute=true and deploySearch=false.')
+param searchEndpoint string = ''
+
+@description('Azure AI Search service name. Required when deploySearch=false and the orchestrator RBAC must target a previously deployed service.')
+param searchServiceName string = ''
+
+@description('Azure OpenAI endpoint. Leave empty until Azure OpenAI is provisioned.')
+param openAiEndpoint string = ''
+
+@description('Azure OpenAI deployment name. Leave empty until Azure OpenAI is provisioned.')
+param openAiDeploymentName string = ''
+
+@description('Deploy Azure OpenAI module (account + GPT deployment + RBAC)')
+param deployOpenAI bool = false
+
+@description('GPT model name to deploy when deployOpenAI=true.')
+@allowed(['gpt-4', 'gpt-4o', 'gpt-4o-mini'])
+param openAiModelName string = 'gpt-4o'
+
+@description('GPT model version to deploy when deployOpenAI=true.')
+param openAiModelVersion string = '2024-05-13'
+
+@description('Token-per-minute capacity in thousands for the GPT deployment. 10 = 10K TPM (Dev default).')
+param openAiCapacityThousands int = 10
+
+@description('Microsoft Purview account name. Leave empty until Purview is provisioned.')
+param purviewAccountName string = ''
+
+@description('Deploy Event Hub module (Namespace + purview-diagnostics hub + consumer group)')
+param deployEventHub bool = false
+
+@description('Event Hubs Namespace SKU')
+@allowed(['Basic', 'Standard', 'Premium'])
+param eventHubSku string = 'Standard'
+
+@description('Deploy Functions module (Purview Bridge Function App + plan + backing storage)')
+param deployFunctions bool = false
+
+@description('Event Hub namespace name. Required when deployFunctions=true and deployEventHub=false.')
+param eventHubNamespaceName string = ''
 
 // =============================================================================
 // RESOURCE GROUP
@@ -119,12 +169,17 @@ module storage 'storage/main.bicep' = if (deployStorage) {
 // =============================================================================
 // COSMOS DB MODULE
 // =============================================================================
+// INF-006: account-db.bicep now creates the account (no longer references
+// an existing resource), making the deployment fully reproducible from zero.
+
 module cosmosAccountDb 'cosmos/account-db.bicep' = {
   name: 'cosmos-account-db'
   scope: resourceGroup
   params: {
     cosmosAccountName: 'cosmos-ai-metadata-dev'
     databaseName: 'metadata_enricher'
+    location: core.outputs.resourceLocation
+    tags: core.outputs.resourceTags
   }
 }
 
@@ -157,6 +212,59 @@ module cosmosContainers 'cosmos/containers.bicep' = if (deployCosmosContainers) 
 }
 
 // =============================================================================
+// EVENT HUB MODULE
+// =============================================================================
+// Provisions the Event Hubs infrastructure required for the Purview diagnostic
+// signal pipeline:
+//
+//   Purview Diagnostic Settings → Event Hub (purview-diagnostics)
+//                                       → Consumer Group (bridge-function)
+//                                       → Bridge Function → Service Bus
+//
+// The DiagnosticsSendRule authorization rule is provisioned to enable Purview
+// Diagnostic Settings to send events to the namespace. This is a known Azure
+// platform limitation — Diagnostic Settings cannot use Managed Identity; a SAS
+// authorization rule with Send permission is required by the platform itself.
+// The bridge function (reading from the hub) uses Managed Identity exclusively.
+
+module eventHub 'eventhub/main.bicep' = if (deployEventHub) {
+  name: 'eventhub-deployment'
+  scope: resourceGroup
+  params: {
+    resourcePrefix: core.outputs.resourcePrefix
+    location: core.outputs.resourceLocation
+    tags: core.outputs.resourceTags
+    eventHubSku: eventHubSku
+  }
+}
+
+// =============================================================================
+// FUNCTIONS MODULE
+// =============================================================================
+// Provisions the Purview Bridge Function App that forwards Event Hub events
+// to the Service Bus purview-events queue.
+//
+// Event Hub namespace name is sourced from the eventhub module when
+// deployEventHub=true, or from the explicit eventHubNamespaceName parameter
+// when the Event Hub was deployed in a prior run.
+//
+// Service Bus Data Sender RBAC is wired automatically when deployFunctions=true,
+// replacing the manual bridgePrincipalId parameter in serviceBusRbac.
+
+module functions 'functions/main.bicep' = if (deployFunctions) {
+  name: 'functions-deployment'
+  scope: resourceGroup
+  params: {
+    resourcePrefix: core.outputs.resourcePrefix
+    location: core.outputs.resourceLocation
+    tags: core.outputs.resourceTags
+    uniqueSuffix: uniqueSuffix
+    eventHubNamespaceName: deployEventHub ? eventHub.outputs.eventHubNamespaceName : eventHubNamespaceName
+    serviceBusNamespaceName: messaging.outputs.serviceBusNamespaceName
+  }
+}
+
+// =============================================================================
 // MESSAGING MODULE
 // =============================================================================
 
@@ -172,6 +280,68 @@ module messaging 'messaging/main.bicep' = {
 }
 
 // =============================================================================
+// AZURE OPENAI MODULE
+// =============================================================================
+// Provisions the Azure OpenAI account, GPT model deployment, and the
+// "Cognitive Services OpenAI User" RBAC assignment for the Orchestrator MI.
+//
+// The orchestrator acquires Entra ID tokens for scope
+// "https://cognitiveservices.azure.com/.default" via DefaultAzureCredential.
+// No API keys are used (disableLocalAuth=true enforces this at the platform level).
+//
+// When deployOpenAI=true:
+//   - openAiEndpoint is auto-wired from the module output into compute
+//   - RBAC is assigned when deployCompute=true (orchestrator MI auto-wired)
+//
+// When deployOpenAI=false and a prior deployment exists:
+//   - Pass the existing endpoint via the openAiEndpoint parameter
+//   - Pass the deployment name via the openAiDeploymentName parameter
+
+module openAi 'openai/main.bicep' = if (deployOpenAI) {
+  name: 'openai-deployment'
+  scope: resourceGroup
+  params: {
+    resourcePrefix: core.outputs.resourcePrefix
+    location: core.outputs.resourceLocation
+    tags: core.outputs.resourceTags
+    modelName: openAiModelName
+    modelVersion: openAiModelVersion
+    deploymentName: openAiDeploymentName
+    capacityThousands: openAiCapacityThousands
+  }
+}
+
+// =============================================================================
+// COMPUTE MODULE
+// =============================================================================
+// Provisions the Container Apps Environment and the Enrichment Orchestrator
+// Container App. Conditional on deployCompute=true.
+//
+// Service Bus FQDN and Cosmos endpoint are derived from sibling module outputs
+// so they remain consistent with deployed resource names.
+//
+// When deployCompute=true the managedIdentityPrincipalId output is forwarded
+// to serviceBusRbac, replacing the manual orchestratorPrincipalId parameter.
+
+module compute 'compute/main.bicep' = if (deployCompute) {
+  name: 'compute-deployment'
+  scope: resourceGroup
+  params: {
+    resourcePrefix: core.outputs.resourcePrefix
+    location: core.outputs.resourceLocation
+    tags: core.outputs.resourceTags
+    environment: environment
+    containerImage: containerImage
+    serviceBusNamespaceFqdn: '${messaging.outputs.serviceBusNamespaceName}.servicebus.windows.net'
+    cosmosEndpoint: cosmosAccountDb.outputs.cosmosEndpoint
+    searchEndpoint: deploySearch ? search.outputs.searchEndpoint : searchEndpoint
+    openAiEndpoint: deployOpenAI ? openAi.outputs.openAiEndpoint : openAiEndpoint
+    openAiDeploymentName: deployOpenAI ? openAi.outputs.deploymentName : openAiDeploymentName
+    purviewAccountName: purviewAccountName
+  }
+}
+
+// =============================================================================
 // MESSAGING RBAC MODULE
 // =============================================================================
 // Grants least-privilege Service Bus roles to compute identities.
@@ -179,14 +349,94 @@ module messaging 'messaging/main.bicep' = {
 //
 //   Bridge (Azure Function)       → Azure Service Bus Data Sender
 //   Orchestrator (Container App)  → Azure Service Bus Data Receiver
+//
+// When deployCompute=true the orchestrator principal ID is sourced directly
+// from the compute module output, removing the need for a manual parameter.
+// When deployFunctions=true the bridge principal ID is sourced directly
+// from the functions module output, removing the need for a manual parameter.
 
 module serviceBusRbac 'messaging/servicebus-rbac.bicep' = {
   name: 'servicebus-rbac-deployment'
   scope: resourceGroup
   params: {
     serviceBusNamespaceName: messaging.outputs.serviceBusNamespaceName
-    bridgePrincipalId: bridgePrincipalId
-    orchestratorPrincipalId: orchestratorPrincipalId
+    bridgePrincipalId: deployFunctions ? functions.outputs.managedIdentityPrincipalId : bridgePrincipalId
+    orchestratorPrincipalId: deployCompute ? compute.outputs.managedIdentityPrincipalId : orchestratorPrincipalId
+  }
+}
+
+// =============================================================================
+// COSMOS DB RBAC MODULE
+// =============================================================================
+// Grants the Orchestrator Container App's Managed Identity the
+// Cosmos DB Built-in Data Contributor role (data plane) on the Cosmos account.
+//
+// This is required for the Orchestrator to read and write documents in the
+// state and audit containers using Managed Identity — no connection strings.
+//
+// When deployCompute=true the orchestrator principal ID is sourced directly
+// from the compute module output, removing the need for a manual parameter.
+
+module cosmosRbac 'cosmos/cosmos-rbac.bicep' = {
+  name: 'cosmos-rbac-deployment'
+  scope: resourceGroup
+  params: {
+    cosmosAccountName: cosmosAccountDb.outputs.cosmosAccountName
+    orchestratorPrincipalId: deployCompute ? compute.outputs.managedIdentityPrincipalId : orchestratorPrincipalId
+  }
+}
+
+// =============================================================================
+// SEARCH RBAC MODULE
+// =============================================================================
+// Grants the Orchestrator Container App's Managed Identity the
+// Search Index Data Reader role on the Azure AI Search service.
+//
+// This is required for the Orchestrator to execute RAG queries against the
+// metadata-context-index using Managed Identity — no API keys.
+//
+// Search service name is sourced from the search module when deploySearch=true,
+// or from the explicit searchServiceName parameter when Search was deployed in
+// a prior run.
+//
+// When deployCompute=true the orchestrator principal ID is sourced directly
+// from the compute module output, removing the need for a manual parameter.
+
+module searchRbac 'search/search-rbac.bicep' = {
+  name: 'search-rbac-deployment'
+  scope: resourceGroup
+  params: {
+    searchServiceName: deploySearch ? search.outputs.searchServiceName : searchServiceName
+    orchestratorPrincipalId: deployCompute ? compute.outputs.managedIdentityPrincipalId : orchestratorPrincipalId
+  }
+}
+
+// =============================================================================
+// AZURE OPENAI RBAC MODULE
+// =============================================================================
+// Grants the Orchestrator Container App's Managed Identity the
+// "Cognitive Services OpenAI User" role on the Azure OpenAI account.
+//
+// This is required for the Orchestrator to invoke chat completions using
+// DefaultAzureCredential with token scope
+// "https://cognitiveservices.azure.com/.default" — no API keys.
+//
+// Declared as a separate module (not inline in openai/main.bicep) to avoid a
+// circular dependency: the compute module sources openAiEndpoint from the
+// openai module, so the openai module must not reference compute outputs.
+//
+// OpenAI account name is sourced from the openai module when deployOpenAI=true,
+// or from the oai-{resourcePrefix} naming convention when deployed in a prior run.
+//
+// When deployCompute=true the orchestrator principal ID is sourced directly
+// from the compute module output, removing the need for a manual parameter.
+
+module openAiRbac 'openai/openai-rbac.bicep' = {
+  name: 'openai-rbac-deployment'
+  scope: resourceGroup
+  params: {
+    openAiAccountName: deployOpenAI ? openAi.outputs.openAiAccountName : 'oai-${core.outputs.resourcePrefix}'
+    orchestratorPrincipalId: deployCompute ? compute.outputs.managedIdentityPrincipalId : orchestratorPrincipalId
   }
 }
 
@@ -216,3 +466,39 @@ output deadLetterQueuePath string = messaging.outputs.deadLetterQueuePath
 
 @description('Purview events queue name')
 output purviewEventsQueueName string = messaging.outputs.purviewEventsQueueName
+
+@description('Orchestrator Container App name (empty when deployCompute=false)')
+output orchestratorContainerAppName string = deployCompute ? compute.outputs.containerAppName : ''
+
+@description('Orchestrator Managed Identity principal ID (empty when deployCompute=false)')
+output orchestratorManagedIdentityPrincipalId string = deployCompute ? compute.outputs.managedIdentityPrincipalId : ''
+
+@description('Container Apps Environment name (empty when deployCompute=false)')
+output containerAppsEnvironmentName string = deployCompute ? compute.outputs.containerAppsEnvironmentName : ''
+
+@description('Event Hub namespace name (empty when deployEventHub=false)')
+output eventHubNamespaceName string = deployEventHub ? eventHub.outputs.eventHubNamespaceName : ''
+
+@description('Event Hub name for Purview diagnostics (empty when deployEventHub=false)')
+output eventHubName string = deployEventHub ? eventHub.outputs.eventHubName : ''
+
+@description('Consumer group for bridge function (empty when deployEventHub=false)')
+output bridgeConsumerGroupName string = deployEventHub ? eventHub.outputs.bridgeConsumerGroupName : ''
+
+@description('Authorization rule resource ID for Purview Diagnostic Settings (empty when deployEventHub=false)')
+output diagnosticsSendRuleId string = deployEventHub ? eventHub.outputs.diagnosticsSendRuleId : ''
+
+@description('Bridge Function App name (empty when deployFunctions=false)')
+output bridgeFunctionAppName string = deployFunctions ? functions.outputs.functionAppName : ''
+
+@description('Bridge Function App Managed Identity principal ID (empty when deployFunctions=false)')
+output bridgeManagedIdentityPrincipalId string = deployFunctions ? functions.outputs.managedIdentityPrincipalId : ''
+
+@description('Azure OpenAI account name (empty when deployOpenAI=false)')
+output openAiAccountName string = deployOpenAI ? openAi.outputs.openAiAccountName : ''
+
+@description('Azure OpenAI endpoint (empty when deployOpenAI=false)')
+output openAiAccountEndpoint string = deployOpenAI ? openAi.outputs.openAiEndpoint : ''
+
+@description('GPT deployment name (empty when deployOpenAI=false)')
+output openAiDeploymentNameOutput string = deployOpenAI ? openAi.outputs.deploymentName : ''
