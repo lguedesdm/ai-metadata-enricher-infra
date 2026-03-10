@@ -1,0 +1,43 @@
+{
+  "value": [
+    {
+      "@search.action": "upload",
+      "id": "synergy_student_enrollment_table",
+      "sourceSystem": "synergy",
+      "source": "synergy-data-dictionary",
+      "elementType": "table",
+      "elementName": "Student Enrollment",
+      "title": "Student Enrollment — Synergy SIS",
+      "description": "Stores student enrollment records including enrollment dates and status.",
+      "content": "Student Enrollment table in Synergy SIS. Tracks enrollment dates, status and enrollment type. Core table for attendance and state reporting. Domain: Student Information.",
+      "tags": ["enrollment", "student", "registration"],
+      "lastUpdated": "2026-03-01T00:00:00Z"
+    },
+    {
+      "@search.action": "upload",
+      "id": "synergy_student_demographics_table",
+      "sourceSystem": "synergy",
+      "source": "synergy-data-dictionary",
+      "elementType": "table",
+      "elementName": "Student Demographics",
+      "title": "Student Demographics — Synergy SIS",
+      "description": "Contains demographic information per student: date of birth, gender, ethnicity.",
+      "content": "Student Demographics table in Synergy SIS. Demographic attributes: date of birth, gender, race/ethnicity, primary language. Required for FERPA-compliant reporting. Domain: Student Information.",
+      "tags": ["demographics", "student", "reporting"],
+      "lastUpdated": "2026-03-01T00:00:00Z"
+    },
+    {
+      "@search.action": "upload",
+      "id": "synergy_attendance_daily_table",
+      "sourceSystem": "synergy",
+      "source": "synergy-data-dictionary",
+      "elementType": "table",
+      "elementName": "Daily Attendance",
+      "title": "Daily Attendance — Synergy SIS",
+      "description": "Records daily attendance events per student per school day.",
+      "content": "Daily Attendance table in Synergy SIS. Captures attendance status (present, absent, tardy) per enrolled student per school day. Used by dashboards and state reporting. Domain: Student Information.",
+      "tags": ["attendance", "student", "daily"],
+      "lastUpdated": "2026-03-01T00:00:00Z"
+    }
+  ]
+}
