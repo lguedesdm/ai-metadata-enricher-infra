@@ -3,11 +3,10 @@
 // =============================================================================
 // Scope: Resource Group
 // Containers:
-// - state
-// - audit
+// - state  (TTL: 7 days  = 604800 s)
+// - audit  (TTL: 180 days = 15552000 s)
 // Partition key: /entityType
 // Inherit shared throughput from database (no container throughput)
-// No TTL, no custom indexes
 // =============================================================================
 
 @description('Cosmos DB account name (existing)')
@@ -29,7 +28,6 @@ resource database 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2023-11-15
   name: databaseName
 }
 
-// Containers (no TTL, no custom indexes)
 resource stateContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2023-11-15' = {
   parent: database
   name: 'state'
@@ -40,6 +38,7 @@ resource stateContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/cont
         paths: [partitionKeyPath]
         kind: 'Hash'
       }
+      defaultTtl: 604800    // 7 days — state documents expire after one enrichment cycle window
     }
   }
 }
@@ -54,6 +53,7 @@ resource auditContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/cont
         paths: [partitionKeyPath]
         kind: 'Hash'
       }
+      defaultTtl: 15552000    // 180 days — audit records retained for operational review
     }
   }
 }
