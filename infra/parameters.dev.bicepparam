@@ -49,3 +49,10 @@ param deployCosmosContainers = true
 // =============================================================================
 
 param serviceBusSku = 'Standard'  // Standard tier for Dev (supports topics and subscriptions)
+
+// =============================================================================
+// COMPUTE PARAMETERS
+// =============================================================================
+
+param deployCompute = true    // Enable Orchestrator Container App
+param deployRegistry = true  // Enable Azure Container Registry
