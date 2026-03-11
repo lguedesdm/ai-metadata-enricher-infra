@@ -11,23 +11,31 @@
 //          → Orchestrator
 //
 // Resources created:
-//   - Storage Account         (dedicated backing storage for the Function App)
-//   - App Service Plan        (Linux Consumption Y1 — serverless, Dev)
-//   - Function App            (func-bridge-{prefix}, System-Assigned MI)
-//   - RBAC: MI → Storage      (Blob + Queue + Table Data Contributor)
-//   - RBAC: MI → Event Hub    (Azure Event Hubs Data Receiver)
+//   - Storage Account             (dedicated backing storage for the Function App)
+//   - Blob container              (deployment-packages — required by Flex Consumption)
+//   - App Service Plan            (Flex Consumption FC1 — serverless, Dev)
+//   - Function App                (func-bridge-{prefix}, System-Assigned MI)
+//   - RBAC: MI → Storage          (Blob + Queue + Table Data Contributor)
+//   - RBAC: MI → Event Hub        (Azure Event Hubs Data Receiver)
+//
+// Hosting plan note:
+//   Originally designed for Consumption Y1 (Dynamic). Migrated to Flex
+//   Consumption (FC1) to avoid Dynamic VM quota exhaustion in East US.
+//   FC1 uses a container-based runtime and a separate quota pool.
+//   The event pipeline, MI auth model, and frozen app settings are unchanged.
 //
 // Security model:
 //   All connections use Managed Identity — no connection strings or SAS tokens.
-//   - Event Hub trigger : EventHubConnection__fullyQualifiedNamespace (MI)
-//   - Service Bus sender: ServiceBusConnection__fullyQualifiedNamespace (MI)
-//   - Backing storage   : AzureWebJobsStorage__accountName (MI)
+//   - Event Hub trigger     : EventHubConnection__fullyQualifiedNamespace (MI)
+//   - Service Bus sender    : ServiceBusConnection__fullyQualifiedNamespace (MI)
+//   - Backing storage       : AzureWebJobsStorage__accountName (MI)
+//   - Deployment packages   : functionAppConfig.deployment.storage (MI)
 //
 // Service Bus RBAC (Azure Service Bus Data Sender) is handled by the sibling
 // module messaging/servicebus-rbac.bicep. Wire managedIdentityPrincipalId
 // output into serviceBusRbac as bridgePrincipalId.
 //
-// Runtime: .NET 8 isolated worker, Azure Functions v4, Linux Consumption.
+// Runtime: .NET 8 isolated worker, Azure Functions v4, Flex Consumption.
 //
 // Frozen app setting values (runtime_architecture_contract.yaml):
 //   EventHubName    : purview-diagnostics
@@ -90,22 +98,44 @@ resource bridgeStorage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
 }
 
 // =============================================================================
-// CONSUMPTION APP SERVICE PLAN (Linux)
+// DEPLOYMENT PACKAGES BLOB CONTAINER
 // =============================================================================
-// Linux Consumption avoids the Windows-specific WEBSITE_CONTENTAZUREFILECONNECTIONSTRING
-// requirement, keeping the configuration clean for MI-only authentication.
+// Flex Consumption requires a dedicated blob container to store deployment
+// packages (ZIP). The function runtime pulls code from here on cold start.
+// Authenticated via SystemAssignedIdentity — no SAS token required.
+// The existing storageBlobDataContributorRoleId RBAC covers this container.
+
+resource bridgeStorageBlobService 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01' = {
+  name: 'default'
+  parent: bridgeStorage
+}
+
+resource deploymentPackagesContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
+  name: 'deployment-packages'
+  parent: bridgeStorageBlobService
+  properties: {
+    publicAccess: 'None'
+  }
+}
+
+// =============================================================================
+// FLEX CONSUMPTION APP SERVICE PLAN
+// =============================================================================
+// FC1 uses a container-based serverless runtime. Unlike Y1 (Dynamic VMs),
+// FC1 draws from a separate quota pool — no Dynamic VM quota required.
+// reserved: true is still required for Linux workers in FC1.
 
 resource appServicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
   name: 'asp-bridge-${resourcePrefix}'
   location: location
   tags: tags
   sku: {
-    name: 'Y1'
-    tier: 'Dynamic'
+    name: 'FC1'
+    tier: 'FlexConsumption'
   }
-  kind: 'linux'
+  kind: 'functionapp'
   properties: {
-    reserved: true    // required for Linux plan
+    reserved: true    // required for Linux workers
   }
 }
 
@@ -134,8 +164,31 @@ resource bridgeFunctionApp 'Microsoft.Web/sites@2023-12-01' = {
     serverFarmId: appServicePlan.id
     httpsOnly: true
 
+    // functionAppConfig is required for Flex Consumption (FC1).
+    // - runtime      : replaces siteConfig.linuxFxVersion
+    // - deployment   : blob container for code packages (MI-authenticated)
+    // - scaleAndConcurrency: Dev defaults (40 instances max, 2 GB memory)
+    functionAppConfig: {
+      runtime: {
+        name: 'dotnet-isolated'
+        version: '8.0'
+      }
+      deployment: {
+        storage: {
+          type: 'blobContainer'
+          value: '${bridgeStorage.properties.primaryEndpoints.blob}deployment-packages'
+          authentication: {
+            type: 'SystemAssignedIdentity'
+          }
+        }
+      }
+      scaleAndConcurrency: {
+        maximumInstanceCount: 40    // Dev default
+        instanceMemoryMB: 2048      // Dev default (2 GB)
+      }
+    }
+
     siteConfig: {
-      linuxFxVersion: 'dotnet-isolated|8.0'    // .NET 8 isolated worker
       use32BitWorkerProcess: false
       ftpsState: 'Disabled'
 
@@ -147,10 +200,8 @@ resource bridgeFunctionApp 'Microsoft.Web/sites@2023-12-01' = {
           name: 'FUNCTIONS_EXTENSION_VERSION'
           value: '~4'
         }
-        {
-          name: 'FUNCTIONS_WORKER_RUNTIME'
-          value: 'dotnet-isolated'
-        }
+        // FUNCTIONS_WORKER_RUNTIME is invalid for Flex Consumption (FC1) —
+        // runtime is declared in functionAppConfig.runtime above.
 
         // ------------------------------------------------------------------
         // Backing storage — Managed Identity authentication

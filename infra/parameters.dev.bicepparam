@@ -55,9 +55,7 @@ param serviceBusSku = 'Standard'  // Standard tier for Dev (supports topics and 
 // =============================================================================
 
 param deployEventHub = true     // Enable Event Hub (required for Purview → pipeline ingestion)
-param deployFunctions = false  // BLOCKED: subscription has 0 quota for Dynamic (Consumption Y1) VMs in East US
-                               // Request quota at: portal.azure.com > Subscriptions > Usage + quotas
-                               // Re-enable once quota is granted.
+param deployFunctions = true   // Migrated from Y1 (Dynamic — quota 0) to FC1 (Flex Consumption)
 
 // =============================================================================
 // COMPUTE PARAMETERS
