@@ -68,3 +68,9 @@ param openAiDeploymentName = 'gpt-4o'  // GPT deployment name — matches AZURE_
 param deployCompute = true    // Enable Orchestrator Container App
 param deployRegistry = true  // Enable Azure Container Registry
 param containerImage = 'craimetadatadev.azurecr.io/ai-metadata-orchestrator:dev'
+
+// =============================================================================
+// OBSERVABILITY PARAMETERS
+// =============================================================================
+
+param deployObservability = true  // Enable Log Analytics workspace + Application Insights

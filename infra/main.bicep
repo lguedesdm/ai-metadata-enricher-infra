@@ -421,7 +421,7 @@ module compute 'compute/main.bicep' = if (deployCompute) {
     openAiDeploymentName: deployOpenAI ? openAi.outputs.deploymentName : openAiDeploymentName
     purviewAccountName: purviewAccountName
     logAnalyticsWorkspaceCustomerId: deployObservability ? observability.outputs.logAnalyticsCustomerId : ''
-    logAnalyticsSharedKey: deployObservability ? listKeys(resourceId('Microsoft.OperationalInsights/workspaces', 'log-${projectName}-${environment}'), '2023-09-01').primarySharedKey : ''
+    logAnalyticsSharedKey: deployObservability ? listKeys(resourceId(subscription().subscriptionId, 'rg-${projectName}-${environment}', 'Microsoft.OperationalInsights/workspaces', 'log-${projectName}-${environment}'), '2023-09-01').primarySharedKey : ''
     appInsightsConnectionString: deployObservability ? observability.outputs.appInsightsConnectionString : ''
   }
 }
