@@ -65,6 +65,9 @@ param serviceBusNamespaceName string
 @description('Unique suffix for the backing storage account name. Leave empty to auto-generate.')
 param uniqueSuffix string = ''
 
+@description('Microsoft Purview account name (e.g. purview-ai-metadata-dev). Used by UpstreamRouterFunction to query the Purview REST API.')
+param purviewAccountName string
+
 // =============================================================================
 // LOCAL VARIABLES
 // =============================================================================
@@ -246,6 +249,22 @@ resource bridgeFunctionApp 'Microsoft.Web/sites@2023-12-01' = {
         {
           name: 'ServiceBusQueueName'
           value: 'purview-events'           // frozen: runtime_architecture_contract.yaml
+        }
+
+        // ------------------------------------------------------------------
+        // UpstreamRouterFunction — Purview REST API + enrichment output
+        // ------------------------------------------------------------------
+        {
+          name: 'PurviewEventsQueueName'
+          value: 'purview-events'           // frozen: runtime_architecture_contract.yaml
+        }
+        {
+          name: 'PurviewAccountName'
+          value: purviewAccountName
+        }
+        {
+          name: 'EnrichmentRequestsQueueName'
+          value: 'enrichment-requests'      // frozen: runtime_architecture_contract.yaml
         }
       ]
     }

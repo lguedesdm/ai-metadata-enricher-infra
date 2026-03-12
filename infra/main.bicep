@@ -275,6 +275,7 @@ module functions 'functions/main.bicep' = if (deployFunctions) {
     uniqueSuffix: uniqueSuffix
     eventHubNamespaceName: deployEventHub ? eventHub.outputs.eventHubNamespaceName : eventHubNamespaceName
     serviceBusNamespaceName: messaging.outputs.serviceBusNamespaceName
+    purviewAccountName: purviewAccountName
   }
 }
 

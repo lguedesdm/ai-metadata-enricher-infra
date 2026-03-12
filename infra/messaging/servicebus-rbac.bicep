@@ -62,6 +62,23 @@ resource bridgeSenderRoleAssignment 'Microsoft.Authorization/roleAssignments@202
 }
 
 // =============================================================================
+// RBAC ASSIGNMENT 1b — Bridge → Data Receiver
+// =============================================================================
+// The UpstreamRouterFunction is triggered by purview-events via Service Bus.
+// It needs Receive (Listen + Read) permission in addition to Send.
+// =============================================================================
+
+resource bridgeReceiverRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(bridgePrincipalId)) {
+  name: guid(serviceBusNamespace.id, bridgePrincipalId, serviceBusDataReceiverRoleId)
+  scope: serviceBusNamespace
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', serviceBusDataReceiverRoleId)
+    principalId: bridgePrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// =============================================================================
 // RBAC ASSIGNMENT 2 — Orchestrator → Data Receiver
 // =============================================================================
 // The Orchestrator Container App reads enrichment requests from the
@@ -84,6 +101,9 @@ resource orchestratorReceiverRoleAssignment 'Microsoft.Authorization/roleAssignm
 
 @description('Role assignment ID for the Purview Bridge sender (empty if skipped)')
 output bridgeSenderRoleAssignmentId string = !empty(bridgePrincipalId) ? bridgeSenderRoleAssignment.id : ''
+
+@description('Role assignment ID for the Purview Bridge receiver (empty if skipped)')
+output bridgeReceiverRoleAssignmentId string = !empty(bridgePrincipalId) ? bridgeReceiverRoleAssignment.id : ''
 
 @description('Role assignment ID for the Orchestrator receiver (empty if skipped)')
 output orchestratorReceiverRoleAssignmentId string = !empty(orchestratorPrincipalId) ? orchestratorReceiverRoleAssignment.id : ''
