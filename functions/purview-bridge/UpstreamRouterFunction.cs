@@ -74,9 +74,17 @@ public class UpstreamRouterFunction
     [Function(nameof(UpstreamRouterFunction))]
     public async Task Run(
         [ServiceBusTrigger("%PurviewEventsQueueName%", Connection = "ServiceBusConnection")]
-        string message)
+        ServiceBusReceivedMessage message)
     {
-        _logger.LogInformation("UpstreamRouter: received message from purview-events");
+        // Read correlationId propagated by the Bridge. Fall back to a new UUID
+        // if the message pre-dates correlationId support or arrived via another path.
+        var correlationId = message.ApplicationProperties.TryGetValue("correlationId", out var cid)
+            ? cid?.ToString() ?? Guid.NewGuid().ToString()
+            : Guid.NewGuid().ToString();
+
+        var body = message.Body.ToString();
+
+        _logger.LogInformation("{ObsLog}", ObsLog("router", "message_received", correlationId));
 
         // ------------------------------------------------------------------ //
         // 1. Resolve DB name
@@ -86,17 +94,17 @@ public class UpstreamRouterFunction
         string dbName;
         try
         {
-            dbName = ResolveDbName(message);
+            dbName = ResolveDbName(body);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to resolve DB name from message — skipping");
+            _logger.LogError(ex, "{ObsLog}", ObsLog("router", "db_name_resolution_failed", correlationId));
             return;
         }
 
         if (string.IsNullOrEmpty(dbName))
         {
-            _logger.LogWarning("Could not determine DB name from message — skipping");
+            _logger.LogWarning("{ObsLog}", ObsLog("router", "db_name_unresolved_skipped", correlationId));
             return;
         }
 
@@ -120,7 +128,7 @@ public class UpstreamRouterFunction
         var dbGuid = await SearchEntityGuid(baseUrl, tokenResult.Token, dbName);
         if (dbGuid is null)
         {
-            _logger.LogWarning("No azure_sql_db entity found for '{DbName}'", dbName);
+            _logger.LogWarning("{ObsLog}", ObsLog("router", "db_entity_not_found", correlationId));
             return;
         }
         _logger.LogInformation("Found DB entity GUID: {DbGuid}", dbGuid);
@@ -131,7 +139,7 @@ public class UpstreamRouterFunction
         var schemaRefs = await GetRelationshipRefs(baseUrl, tokenResult.Token, dbGuid, "schemas");
         if (schemaRefs.Count == 0)
         {
-            _logger.LogWarning("No schemas found under DB '{DbName}' — nothing sent", dbName);
+            _logger.LogWarning("{ObsLog}", ObsLog("router", "no_schemas_found_skipped", correlationId));
             return;
         }
 
@@ -160,21 +168,34 @@ public class UpstreamRouterFunction
                     sourceSystem = "purview"
                 });
 
-                tableMessages.Add(new ServiceBusMessage(Encoding.UTF8.GetBytes(payload)));
-                _logger.LogInformation("Queuing enrichment-request: {Name} ({Guid})", tableName, tableGuid);
+                var outgoing = new ServiceBusMessage(Encoding.UTF8.GetBytes(payload));
+                outgoing.ApplicationProperties["correlationId"] = correlationId;
+                tableMessages.Add(outgoing);
+
+                _logger.LogInformation("{ObsLog}", ObsLog("router", "enrichment_request_queued", correlationId, tableGuid));
             }
         }
 
         if (tableMessages.Count > 0)
         {
             await _sender!.SendMessagesAsync(tableMessages);
-            _logger.LogInformation("Sent {Count} enrichment-request message(s)", tableMessages.Count);
+            _logger.LogInformation("{ObsLog}", ObsLog("router", "enrichment_requests_sent", correlationId));
         }
         else
         {
-            _logger.LogWarning("No table entities found under DB '{DbName}' — nothing sent", dbName);
+            _logger.LogWarning("{ObsLog}", ObsLog("router", "no_tables_found_skipped", correlationId));
         }
     }
+
+    private static string ObsLog(string stage, string evt, string correlationId, string? assetId = null) =>
+        System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, string?>
+        {
+            ["assetId"]       = assetId,
+            ["correlationId"] = correlationId,
+            ["stage"]         = stage,
+            ["event"]         = evt,
+            ["timestamp"]     = DateTime.UtcNow.ToString("o")
+        });
 
     // ---------------------------------------------------------------------- //
     // DB NAME RESOLUTION
