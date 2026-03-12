@@ -43,6 +43,9 @@ dist/
 
 # Azure Functions
 local.settings.json
+functions/purview-bridge/publish/
+functions/purview-bridge/publish_v2/
+functions/purview-bridge/deploy*.zip
 
 # Node / npm (tooling artifacts)
 node_modules/
