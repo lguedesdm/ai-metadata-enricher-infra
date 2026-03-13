@@ -38,7 +38,7 @@ param storageSku = 'Standard_LRS'  // Locally redundant storage for Dev
 
 param searchSku = 'basic'  // Basic tier for Azure AI Search in Dev per architecture
 param deploySearchIndex = false  // Index already created manually (deployment script had auth issues in ACI)
-param deployStorage = false     // Do not deploy Storage in Phase 2
+param deployStorage = true      // Canonical storage aimetadatadevstganpqtlf2 deployed and validated
 param deploySearch = true       // Enable Azure AI Search (required for RAG)
 
 // Cosmos containers are deployed in Phase 2 (disabled for Phase 1)
@@ -72,3 +72,9 @@ param containerImage = 'craimetadatadev.azurecr.io/ai-metadata-orchestrator:dev'
 // =============================================================================
 
 param deployObservability = true  // Enable Log Analytics workspace + Application Insights
+
+// =============================================================================
+// PURVIEW PARAMETERS
+// =============================================================================
+
+param purviewAccountName = 'purview-ai-metadata-dev'  // Canonical Purview account
