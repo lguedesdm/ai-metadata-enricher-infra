@@ -9,7 +9,8 @@
 #   SKIP        -> "Already Processed"
 #   NO_CONTEXT  -> "Insufficient Context"
 #   BLOCK       -> "Validation Protected"
-#   ERROR       -> "Processing Error"
+#   ERROR              -> "Processing Error"
+#   PENDING_PROTECTED  -> "Pending Review — Content Changed"
 #
 # Application Insights resource: appi-ai-metadata-dev
 # Log Analytics workspace:       log-ai-metadata-dev
@@ -45,6 +46,7 @@ traces
     rawStatus == "NO_CONTEXT", "Insufficient Context",
     rawStatus == "BLOCK", "Validation Protected",
     rawStatus == "ERROR", "Processing Error",
+    rawStatus == "PENDING_PROTECTED", "Pending Review — Content Changed",
     "Unknown"
   )
 | summarize Count = count() by DisplayStatus
@@ -64,6 +66,7 @@ traces
     rawStatus == "NO_CONTEXT", "Insufficient Context",
     rawStatus == "BLOCK", "Validation Protected",
     rawStatus == "ERROR", "Processing Error",
+    rawStatus == "PENDING_PROTECTED", "Pending Review — Content Changed",
     "Unknown"
   )
 | summarize Count = count() by DisplayStatus
@@ -182,6 +185,7 @@ traces
     rawStatus == "NO_CONTEXT", "Insufficient Context",
     rawStatus == "BLOCK", "Validation Protected",
     rawStatus == "ERROR", "Processing Error",
+    rawStatus == "PENDING_PROTECTED", "Pending Review — Content Changed",
     "Unknown"
   )
 | project
