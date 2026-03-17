@@ -109,6 +109,27 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
 }
 
 // =============================================================================
+// PIPELINE DASHBOARD WORKBOOK
+// =============================================================================
+// Azure Monitor Workbook for operational visibility into the enrichment
+// pipeline.  Reads pipeline_completion trace events from Application Insights.
+// Controlled by deployWorkbook parameter — defaults to true when observability
+// module is deployed.
+
+@description('Deploy the Pipeline Dashboard workbook (default true)')
+param deployWorkbook bool = true
+
+module workbook 'workbook.bicep' = if (deployWorkbook) {
+  name: 'workbook-deployment'
+  params: {
+    workbookDisplayName: 'AI Metadata Enricher — Pipeline Dashboard'
+    location: location
+    appInsightsId: appInsights.id
+    tags: tags
+  }
+}
+
+// =============================================================================
 // OUTPUTS
 // =============================================================================
 
@@ -132,3 +153,9 @@ output appInsightsConnectionString string = appInsights.properties.ConnectionStr
 
 @description('Application Insights instrumentation key (legacy — prefer connection string)')
 output appInsightsInstrumentationKey string = appInsights.properties.InstrumentationKey
+
+@description('Pipeline Dashboard workbook resource ID (empty when deployWorkbook=false)')
+output workbookId string = deployWorkbook ? workbook.outputs.workbookId : ''
+
+@description('Pipeline Dashboard workbook name (empty when deployWorkbook=false)')
+output workbookName string = deployWorkbook ? workbook.outputs.workbookName : ''

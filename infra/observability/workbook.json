@@ -1,0 +1,460 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# AI Metadata Enricher -- Pipeline Dashboard\n\nThe AI Metadata Enricher automatically processes enterprise data assets, generating AI-driven metadata descriptions with built-in quality controls and idempotency safeguards.\n\nThis dashboard provides real-time operational visibility into every execution, showing what the system decided, why, and how long it took. All data is sourced from `pipeline_completion` trace events in Application Insights.\n\n---"
+      },
+      "name": "header"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "time-range",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 86400000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                { "durationMs": 3600000 },
+                { "durationMs": 14400000 },
+                { "durationMs": 86400000 },
+                { "durationMs": 259200000 },
+                { "durationMs": 604800000 }
+              ],
+              "allowCustom": true
+            },
+            "label": "Time Range"
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components"
+      },
+      "name": "parameters"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "title": "Section 1: System Overview",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "## System Overview\n\nThese KPIs summarize the total volume of executions, the proportion that resulted in successful enrichment, and the average end-to-end processing time. A healthy system shows a stable success rate and consistent latency."
+            },
+            "name": "section1-text"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "traces\n| where timestamp {TimeRange}\n| where customDimensions[\"event\"] == \"pipeline_completion\"\n| summarize\n    TotalExecutions = count(),\n    Successes = countif(tostring(customDimensions[\"status\"]) == \"SUCCESS\"),\n    AvgLatencyMs = round(avg(toint(customDimensions[\"durationMs\"])), 0)\n| extend SuccessRatePct = iff(TotalExecutions > 0, round(100.0 * Successes / TotalExecutions, 1), 0.0)",
+              "size": 4,
+              "title": "Pipeline KPIs",
+              "queryType": 0,
+              "resourceType": "microsoft.insights/components",
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Column1",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "TotalExecutions",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "auto"
+                  }
+                },
+                "showBorder": true
+              }
+            },
+            "name": "overview-kpi-tiles"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "traces\n| where timestamp {TimeRange}\n| where customDimensions[\"event\"] == \"pipeline_completion\"\n| extend rawStatus = tostring(customDimensions[\"status\"])\n| extend DisplayStatus = case(\n    rawStatus == \"SUCCESS\", \"Successfully Enriched\",\n    rawStatus == \"SKIP\", \"Already Processed\",\n    rawStatus == \"NO_CONTEXT\", \"Insufficient Context\",\n    rawStatus == \"BLOCK\", \"Validation Protected\",\n    rawStatus == \"ERROR\", \"Processing Error\",\n    \"Unknown\"\n  )\n| summarize Count = count() by DisplayStatus\n| order by Count desc",
+              "size": 2,
+              "title": "Execution Outcome Distribution",
+              "queryType": 0,
+              "resourceType": "microsoft.insights/components",
+              "visualization": "piechart",
+              "chartSettings": {
+                "seriesLabelSettings": [
+                  { "seriesName": "Successfully Enriched", "color": "green" },
+                  { "seriesName": "Already Processed", "color": "blue" },
+                  { "seriesName": "Insufficient Context", "color": "orange" },
+                  { "seriesName": "Validation Protected", "color": "redBright" },
+                  { "seriesName": "Processing Error", "color": "red" }
+                ]
+              }
+            },
+            "customWidth": "50",
+            "name": "overview-status-pie"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "traces\n| where timestamp {TimeRange}\n| where customDimensions[\"event\"] == \"pipeline_completion\"\n| extend rawStatus = tostring(customDimensions[\"status\"])\n| extend DisplayStatus = case(\n    rawStatus == \"SUCCESS\", \"Successfully Enriched\",\n    rawStatus == \"SKIP\", \"Already Processed\",\n    rawStatus == \"NO_CONTEXT\", \"Insufficient Context\",\n    rawStatus == \"BLOCK\", \"Validation Protected\",\n    rawStatus == \"ERROR\", \"Processing Error\",\n    \"Unknown\"\n  )\n| summarize Count = count() by\n    bin(timestamp, 1h),\n    DisplayStatus\n| order by timestamp asc",
+              "size": 0,
+              "title": "Execution Trend Over Time",
+              "queryType": 0,
+              "resourceType": "microsoft.insights/components",
+              "visualization": "timechart",
+              "chartSettings": {
+                "seriesLabelSettings": [
+                  { "seriesName": "Successfully Enriched", "color": "green" },
+                  { "seriesName": "Already Processed", "color": "blue" },
+                  { "seriesName": "Insufficient Context", "color": "orange" },
+                  { "seriesName": "Validation Protected", "color": "redBright" },
+                  { "seriesName": "Processing Error", "color": "red" }
+                ]
+              }
+            },
+            "customWidth": "50",
+            "name": "overview-status-trend"
+          }
+        ]
+      },
+      "name": "group-overview"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "title": "Section 2: Decision Breakdown",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "## Decision Breakdown\n\nEvery execution results in one of four outcomes, each reflecting a deliberate decision by the system's quality and safety controls.\n\n| Outcome | Meaning |\n|---|---|\n| **Successfully Enriched** | Asset received a new AI-generated metadata description |\n| **Already Processed** | Asset was unchanged since last run -- no re-enrichment needed (hash match) |\n| **Insufficient Context** | No grounding data available in the knowledge base -- enrichment safely aborted to prevent ungrounded output |\n| **Validation Protected** | AI output did not meet quality standards -- write-back to the catalog was blocked |\n| **Processing Error** | A transient or unexpected error occurred -- the message will be retried automatically |"
+            },
+            "name": "section2-text"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "traces\n| where timestamp {TimeRange}\n| where customDimensions[\"event\"] == \"pipeline_completion\"\n| extend rawStatus = tostring(customDimensions[\"status\"])\n| extend DisplayStatus = case(\n    rawStatus == \"SUCCESS\", \"Successfully Enriched\",\n    rawStatus == \"SKIP\", \"Already Processed\",\n    rawStatus == \"NO_CONTEXT\", \"Insufficient Context\",\n    rawStatus == \"BLOCK\", \"Validation Protected\",\n    rawStatus == \"ERROR\", \"Processing Error\",\n    \"Unknown\"\n  )\n| summarize Count = count() by DisplayStatus\n| extend Total = toscalar(\n    traces\n    | where timestamp {TimeRange}\n    | where customDimensions[\"event\"] == \"pipeline_completion\"\n    | count\n  )\n| extend Percentage = round(100.0 * Count / Total, 1)\n| project DisplayStatus, Count, Percentage\n| order by Count desc",
+              "size": 0,
+              "title": "Decision Distribution",
+              "queryType": 0,
+              "resourceType": "microsoft.insights/components",
+              "visualization": "table",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Percentage",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "palette": "greenRed"
+                    },
+                    "numberFormat": {
+                      "unit": 1,
+                      "options": {
+                        "style": "decimal",
+                        "maximumFractionDigits": 1
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "DisplayStatus",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "colors",
+                      "thresholdsGrid": [
+                        { "operator": "==", "thresholdValue": "Successfully Enriched", "representation": "green", "text": "{0}{1}" },
+                        { "operator": "==", "thresholdValue": "Already Processed", "representation": "blue", "text": "{0}{1}" },
+                        { "operator": "==", "thresholdValue": "Insufficient Context", "representation": "orange", "text": "{0}{1}" },
+                        { "operator": "==", "thresholdValue": "Validation Protected", "representation": "redBright", "text": "{0}{1}" },
+                        { "operator": "==", "thresholdValue": "Processing Error", "representation": "red", "text": "{0}{1}" },
+                        { "operator": "Default", "representation": "lightBlue", "text": "{0}{1}" }
+                      ]
+                    }
+                  }
+                ]
+              }
+            },
+            "name": "decision-table"
+          }
+        ]
+      },
+      "name": "group-decisions"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "title": "Section 3: Pipeline Performance",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "## Pipeline Performance\n\nThe pipeline processes assets end-to-end, with the LLM invocation as the primary latency factor. Assets that exit early (Already Processed, Insufficient Context) complete in under 200ms. Full enrichment cycles including LLM invocation and catalog writeback typically complete in under 6 seconds."
+            },
+            "name": "section3-text"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "traces\n| where timestamp {TimeRange}\n| where customDimensions[\"event\"] == \"pipeline_completion\"\n| where isnotempty(customDimensions[\"durationMs\"])\n| extend DurationMs = toint(customDimensions[\"durationMs\"])\n| summarize\n    AvgMs = round(avg(DurationMs), 0),\n    P50Ms = round(percentile(DurationMs, 50), 0),\n    P95Ms = round(percentile(DurationMs, 95), 0),\n    MaxMs = max(DurationMs),\n    Executions = count()\n  by Stage = tostring(customDimensions[\"stage\"])\n| order by AvgMs desc",
+              "size": 0,
+              "title": "Latency by Pipeline Stage",
+              "queryType": 0,
+              "resourceType": "microsoft.insights/components",
+              "visualization": "table",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "AvgMs",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "palette": "yellowOrangeRed"
+                    }
+                  },
+                  {
+                    "columnMatch": "P95Ms",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "palette": "yellowOrangeRed"
+                    }
+                  }
+                ]
+              }
+            },
+            "customWidth": "50",
+            "name": "latency-table"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "traces\n| where timestamp {TimeRange}\n| where customDimensions[\"event\"] == \"pipeline_completion\"\n| where toint(customDimensions[\"tokenCount\"]) > 0\n| summarize\n    TotalTokens = sum(toint(customDimensions[\"tokenCount\"])),\n    AvgTokens = round(avg(toint(customDimensions[\"tokenCount\"])), 0),\n    LLMInvocations = count()\n| extend EstimatedCostUSD = round(toreal(TotalTokens) * 0.000005, 4)",
+              "size": 4,
+              "title": "LLM Token Usage",
+              "queryType": 0,
+              "resourceType": "microsoft.insights/components",
+              "visualization": "tiles",
+              "tileSettings": {
+                "showBorder": true
+              }
+            },
+            "customWidth": "50",
+            "name": "token-usage"
+          }
+        ]
+      },
+      "name": "group-performance"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "title": "Section 4: Reliability",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "## Reliability\n\nThe system is designed to fail safely -- errors result in message retry via Service Bus dead-letter, never silent data corruption. A Validation Protected outcome means the AI output was caught by quality controls before reaching the catalog. Both scenarios demonstrate the system working as intended.\n\nAn increasing error rate or sustained block rate may indicate a configuration issue, a change in source data quality, or an LLM behavior regression that warrants investigation."
+            },
+            "name": "section4-text"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "traces\n| where timestamp {TimeRange}\n| where customDimensions[\"event\"] == \"pipeline_completion\"\n| summarize\n    Total = count(),\n    Errors = countif(tostring(customDimensions[\"status\"]) == \"ERROR\"),\n    Blocked = countif(tostring(customDimensions[\"status\"]) == \"BLOCK\")\n| extend ErrorRatePct = iff(Total > 0, round(100.0 * Errors / Total, 1), 0.0)\n| extend BlockRatePct = iff(Total > 0, round(100.0 * Blocked / Total, 1), 0.0)",
+              "size": 4,
+              "title": "Error & Block Rates",
+              "queryType": 0,
+              "resourceType": "microsoft.insights/components",
+              "visualization": "tiles",
+              "tileSettings": {
+                "showBorder": true
+              }
+            },
+            "name": "reliability-kpi-tiles"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "traces\n| where timestamp {TimeRange}\n| where customDimensions[\"event\"] == \"pipeline_completion\"\n| summarize\n    Total = count(),\n    Errors = countif(tostring(customDimensions[\"status\"]) == \"ERROR\")\n  by bin(timestamp, 1h)\n| extend ErrorRatePct = iff(Total > 0, round(100.0 * Errors / Total, 1), 0.0)\n| project timestamp, ErrorRatePct",
+              "size": 0,
+              "title": "Error Rate Trend (hourly)",
+              "queryType": 0,
+              "resourceType": "microsoft.insights/components",
+              "visualization": "timechart",
+              "chartSettings": {
+                "ySettings": {
+                  "min": 0
+                }
+              }
+            },
+            "name": "error-rate-trend"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "traces\n| where timestamp {TimeRange}\n| where customDimensions[\"event\"] == \"pipeline_completion\"\n| where tostring(customDimensions[\"status\"]) == \"BLOCK\" or tostring(customDimensions[\"status\"]) == \"ERROR\"\n| project\n    Timestamp = timestamp,\n    CorrelationId = tostring(customDimensions[\"correlationId\"]),\n    Status = tostring(customDimensions[\"status\"]),\n    Stage = tostring(customDimensions[\"stage\"]),\n    ValidationStatus = tostring(customDimensions[\"validationStatus\"]),\n    DurationMs = toint(customDimensions[\"durationMs\"])\n| order by Timestamp desc",
+              "size": 0,
+              "title": "Recent Blocked & Error Executions",
+              "queryType": 0,
+              "resourceType": "microsoft.insights/components",
+              "visualization": "table",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Status",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "colors",
+                      "thresholdsGrid": [
+                        { "operator": "==", "thresholdValue": "BLOCK", "representation": "redBright", "text": "{0}{1}" },
+                        { "operator": "==", "thresholdValue": "ERROR", "representation": "red", "text": "{0}{1}" },
+                        { "operator": "Default", "representation": "lightBlue", "text": "{0}{1}" }
+                      ]
+                    }
+                  }
+                ]
+              }
+            },
+            "name": "failures-detail-table"
+          }
+        ]
+      },
+      "name": "group-reliability"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "title": "Section 5: Execution Trace Explorer",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "## Execution Trace Explorer\n\nEnter any correlationId to see the complete audit trail of a single execution. Every pipeline run carries a unique correlationId that links all events from message receipt through to the final catalog write-back (or early exit). This provides full traceability for compliance, debugging, and operational review."
+            },
+            "name": "section5-text"
+          },
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "correlation-id",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "CorrelationId",
+                  "type": 1,
+                  "isRequired": false,
+                  "value": "",
+                  "label": "Correlation ID"
+                }
+              ],
+              "style": "pills",
+              "queryType": 0,
+              "resourceType": "microsoft.insights/components"
+            },
+            "name": "trace-parameters"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "traces\n| where timestamp > ago(7d)\n| where isnotempty(\"{CorrelationId}\")\n| where tostring(customDimensions[\"correlationId\"]) == \"{CorrelationId}\"\n| project\n    Timestamp = timestamp,\n    Event = message,\n    Stage = tostring(customDimensions[\"stage\"]),\n    Status = tostring(customDimensions[\"status\"]),\n    DurationMs = toint(customDimensions[\"durationMs\"]),\n    Element = tostring(customDimensions[\"elementName\"]),\n    EventType = tostring(customDimensions[\"event\"])\n| order by Timestamp asc",
+              "size": 0,
+              "title": "Trace for Correlation ID",
+              "queryType": 0,
+              "resourceType": "microsoft.insights/components",
+              "visualization": "table",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Status",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "colors",
+                      "thresholdsGrid": [
+                        { "operator": "==", "thresholdValue": "SUCCESS", "representation": "green", "text": "{0}{1}" },
+                        { "operator": "==", "thresholdValue": "SKIP", "representation": "blue", "text": "{0}{1}" },
+                        { "operator": "==", "thresholdValue": "NO_CONTEXT", "representation": "orange", "text": "{0}{1}" },
+                        { "operator": "==", "thresholdValue": "BLOCK", "representation": "redBright", "text": "{0}{1}" },
+                        { "operator": "==", "thresholdValue": "ERROR", "representation": "red", "text": "{0}{1}" },
+                        { "operator": "Default", "representation": "lightBlue", "text": "{0}{1}" }
+                      ]
+                    }
+                  }
+                ]
+              }
+            },
+            "name": "trace-table"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Recent Executions (for reference)\n\nUse this table to find a correlationId to trace above."
+            },
+            "name": "recent-executions-text"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "traces\n| where timestamp {TimeRange}\n| where customDimensions[\"event\"] == \"pipeline_completion\"\n| extend rawStatus = tostring(customDimensions[\"status\"])\n| extend DisplayStatus = case(\n    rawStatus == \"SUCCESS\", \"Successfully Enriched\",\n    rawStatus == \"SKIP\", \"Already Processed\",\n    rawStatus == \"NO_CONTEXT\", \"Insufficient Context\",\n    rawStatus == \"BLOCK\", \"Validation Protected\",\n    rawStatus == \"ERROR\", \"Processing Error\",\n    \"Unknown\"\n  )\n| project\n    Timestamp = timestamp,\n    CorrelationId = tostring(customDimensions[\"correlationId\"]),\n    Outcome = DisplayStatus,\n    Stage = tostring(customDimensions[\"stage\"]),\n    DurationMs = toint(customDimensions[\"durationMs\"])\n| order by Timestamp desc\n| take 20",
+              "size": 0,
+              "title": "Recent Executions",
+              "queryType": 0,
+              "resourceType": "microsoft.insights/components",
+              "visualization": "table",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Outcome",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "colors",
+                      "thresholdsGrid": [
+                        { "operator": "==", "thresholdValue": "Successfully Enriched", "representation": "green", "text": "{0}{1}" },
+                        { "operator": "==", "thresholdValue": "Already Processed", "representation": "blue", "text": "{0}{1}" },
+                        { "operator": "==", "thresholdValue": "Insufficient Context", "representation": "orange", "text": "{0}{1}" },
+                        { "operator": "==", "thresholdValue": "Validation Protected", "representation": "redBright", "text": "{0}{1}" },
+                        { "operator": "==", "thresholdValue": "Processing Error", "representation": "red", "text": "{0}{1}" },
+                        { "operator": "Default", "representation": "lightBlue", "text": "{0}{1}" }
+                      ]
+                    }
+                  }
+                ]
+              }
+            },
+            "name": "recent-executions-table"
+          }
+        ]
+      },
+      "name": "group-trace"
+    }
+  ],
+  "styleSettings": {},
+  "$schema": "https://github.com/microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
