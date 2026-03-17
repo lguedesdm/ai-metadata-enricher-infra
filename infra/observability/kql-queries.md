@@ -14,17 +14,22 @@
 # Application Insights resource: appi-ai-metadata-dev
 # Log Analytics workspace:       log-ai-metadata-dev
 
-## Query 1: Overview KPIs (Section 1)
+## Query 1: Overview KPIs (Section 1 -- tiles visualization)
 
 ```kql
-traces
+// Unpivoted into Metric/Value rows for Azure Workbook tiles rendering.
+// Original single-row format caused "Could not create tiles" errors.
+let data = traces
 | where timestamp {TimeRange}
 | where customDimensions["event"] == "pipeline_completion"
 | summarize
     TotalExecutions = count(),
     Successes = countif(tostring(customDimensions["status"]) == "SUCCESS"),
-    AvgLatencyMs = round(avg(toint(customDimensions["durationMs"])), 0)
-| extend SuccessRatePct = iff(TotalExecutions > 0, round(100.0 * Successes / TotalExecutions, 1), 0.0)
+    AvgLatencyMs = coalesce(round(avg(toint(customDimensions["durationMs"])), 0), 0.0)
+| extend SuccessRatePct = iff(TotalExecutions > 0, round(100.0 * Successes / TotalExecutions, 1), 0.0);
+print x=1 | project Metric = 'Total Executions', Value = toreal(toscalar(data | project TotalExecutions))
+| union (print x=1 | project Metric = 'Success Rate (%)', Value = toreal(toscalar(data | project SuccessRatePct)))
+| union (print x=1 | project Metric = 'Avg Latency (ms)', Value = toreal(toscalar(data | project AvgLatencyMs)))
 ```
 
 ## Query 2: Status Distribution with Business Labels (Sections 1 & 2)
@@ -88,13 +93,15 @@ traces
     MaxMs = max(DurationMs),
     Executions = count()
   by Stage = tostring(customDimensions["stage"])
+| where isnotempty(Stage)
 | order by AvgMs desc
 ```
 
-## Query 5: LLM Token Usage & Estimated Cost (Section 3)
+## Query 5: LLM Token Usage & Estimated Cost (Section 3 -- tiles visualization)
 
 ```kql
-traces
+// Unpivoted into Metric/Value rows for Azure Workbook tiles rendering.
+let data = traces
 | where timestamp {TimeRange}
 | where customDimensions["event"] == "pipeline_completion"
 | where toint(customDimensions["tokenCount"]) > 0
@@ -102,13 +109,18 @@ traces
     TotalTokens = sum(toint(customDimensions["tokenCount"])),
     AvgTokens = round(avg(toint(customDimensions["tokenCount"])), 0),
     LLMInvocations = count()
-| extend EstimatedCostUSD = round(toreal(TotalTokens) * 0.000005, 4)
+| extend EstimatedCostUSD = round(toreal(TotalTokens) * 0.000005, 4);
+print x=1 | project Metric = 'Total Tokens', Value = toreal(toscalar(data | project TotalTokens))
+| union (print x=1 | project Metric = 'Avg Tokens/Call', Value = toreal(toscalar(data | project AvgTokens)))
+| union (print x=1 | project Metric = 'LLM Invocations', Value = toreal(toscalar(data | project LLMInvocations)))
+| union (print x=1 | project Metric = 'Est. Cost (USD)', Value = toreal(toscalar(data | project EstimatedCostUSD)))
 ```
 
-## Query 6: Error & Block Rates (Section 4)
+## Query 6: Error & Block Rates (Section 4 -- tiles visualization)
 
 ```kql
-traces
+// Unpivoted into Metric/Value rows for Azure Workbook tiles rendering.
+let data = traces
 | where timestamp {TimeRange}
 | where customDimensions["event"] == "pipeline_completion"
 | summarize
@@ -116,7 +128,11 @@ traces
     Errors = countif(tostring(customDimensions["status"]) == "ERROR"),
     Blocked = countif(tostring(customDimensions["status"]) == "BLOCK")
 | extend ErrorRatePct = iff(Total > 0, round(100.0 * Errors / Total, 1), 0.0)
-| extend BlockRatePct = iff(Total > 0, round(100.0 * Blocked / Total, 1), 0.0)
+| extend BlockRatePct = iff(Total > 0, round(100.0 * Blocked / Total, 1), 0.0);
+print x=1 | project Metric = 'Error Rate (%)', Value = toreal(toscalar(data | project ErrorRatePct))
+| union (print x=1 | project Metric = 'Block Rate (%)', Value = toreal(toscalar(data | project BlockRatePct)))
+| union (print x=1 | project Metric = 'Total Errors', Value = toreal(toscalar(data | project Errors)))
+| union (print x=1 | project Metric = 'Total Blocked', Value = toreal(toscalar(data | project Blocked)))
 ```
 
 ## Query 7: Error Rate Trend (Section 4)
@@ -137,8 +153,10 @@ traces
 
 ```kql
 // Parameter: {CorrelationId}
+// Uses strlen() guard so empty parameter shows noDataMessage instead of scanning all traces
 traces
 | where timestamp > ago(7d)
+| where strlen("{CorrelationId}") > 0
 | where tostring(customDimensions["correlationId"]) == "{CorrelationId}"
 | project
     Timestamp = timestamp,

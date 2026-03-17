@@ -24,11 +24,11 @@
             },
             "typeSettings": {
               "selectableValues": [
-                { "durationMs": 3600000 },
-                { "durationMs": 14400000 },
-                { "durationMs": 86400000 },
-                { "durationMs": 259200000 },
-                { "durationMs": 604800000 }
+                { "durationMs": 3600000, "text": "Last 1 hour" },
+                { "durationMs": 14400000, "text": "Last 4 hours" },
+                { "durationMs": 86400000, "text": "Last 24 hours" },
+                { "durationMs": 259200000, "text": "Last 3 days" },
+                { "durationMs": 604800000, "text": "Last 7 days" }
               ],
               "allowCustom": true
             },
@@ -59,7 +59,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "traces\n| where timestamp {TimeRange}\n| where customDimensions[\"event\"] == \"pipeline_completion\"\n| summarize\n    TotalExecutions = count(),\n    Successes = countif(tostring(customDimensions[\"status\"]) == \"SUCCESS\"),\n    AvgLatencyMs = round(avg(toint(customDimensions[\"durationMs\"])), 0)\n| extend SuccessRatePct = iff(TotalExecutions > 0, round(100.0 * Successes / TotalExecutions, 1), 0.0)",
+              "query": "let data = traces\n| where timestamp {TimeRange}\n| where customDimensions[\"event\"] == \"pipeline_completion\"\n| summarize\n    TotalExecutions = count(),\n    Successes = countif(tostring(customDimensions[\"status\"]) == \"SUCCESS\"),\n    AvgLatencyMs = coalesce(round(avg(toint(customDimensions[\"durationMs\"])), 0), 0.0)\n| extend SuccessRatePct = iff(TotalExecutions > 0, round(100.0 * Successes / TotalExecutions, 1), 0.0);\nprint x=1 | project Metric = 'Total Executions', Value = toreal(toscalar(data | project TotalExecutions))\n| union (print x=1 | project Metric = 'Success Rate (%)', Value = toreal(toscalar(data | project SuccessRatePct)))\n| union (print x=1 | project Metric = 'Avg Latency (ms)', Value = toreal(toscalar(data | project AvgLatencyMs)))",
               "size": 4,
               "title": "Pipeline KPIs",
               "queryType": 0,
@@ -67,14 +67,21 @@
               "visualization": "tiles",
               "tileSettings": {
                 "titleContent": {
-                  "columnMatch": "Column1",
+                  "columnMatch": "Metric",
                   "formatter": 1
                 },
                 "leftContent": {
-                  "columnMatch": "TotalExecutions",
+                  "columnMatch": "Value",
                   "formatter": 12,
                   "formatOptions": {
                     "palette": "auto"
+                  },
+                  "numberFormat": {
+                    "unit": 0,
+                    "options": {
+                      "style": "decimal",
+                      "maximumFractionDigits": 1
+                    }
                   }
                 },
                 "showBorder": true
@@ -214,7 +221,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "traces\n| where timestamp {TimeRange}\n| where customDimensions[\"event\"] == \"pipeline_completion\"\n| where isnotempty(customDimensions[\"durationMs\"])\n| extend DurationMs = toint(customDimensions[\"durationMs\"])\n| summarize\n    AvgMs = round(avg(DurationMs), 0),\n    P50Ms = round(percentile(DurationMs, 50), 0),\n    P95Ms = round(percentile(DurationMs, 95), 0),\n    MaxMs = max(DurationMs),\n    Executions = count()\n  by Stage = tostring(customDimensions[\"stage\"])\n| order by AvgMs desc",
+              "query": "traces\n| where timestamp {TimeRange}\n| where customDimensions[\"event\"] == \"pipeline_completion\"\n| where isnotempty(customDimensions[\"durationMs\"])\n| extend DurationMs = toint(customDimensions[\"durationMs\"])\n| summarize\n    AvgMs = round(avg(DurationMs), 0),\n    P50Ms = round(percentile(DurationMs, 50), 0),\n    P95Ms = round(percentile(DurationMs, 95), 0),\n    MaxMs = max(DurationMs),\n    Executions = count()\n  by Stage = tostring(customDimensions[\"stage\"])\n| where isnotempty(Stage)\n| order by AvgMs desc",
               "size": 0,
               "title": "Latency by Pipeline Stage",
               "queryType": 0,
@@ -246,13 +253,31 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "traces\n| where timestamp {TimeRange}\n| where customDimensions[\"event\"] == \"pipeline_completion\"\n| where toint(customDimensions[\"tokenCount\"]) > 0\n| summarize\n    TotalTokens = sum(toint(customDimensions[\"tokenCount\"])),\n    AvgTokens = round(avg(toint(customDimensions[\"tokenCount\"])), 0),\n    LLMInvocations = count()\n| extend EstimatedCostUSD = round(toreal(TotalTokens) * 0.000005, 4)",
+              "query": "let data = traces\n| where timestamp {TimeRange}\n| where customDimensions[\"event\"] == \"pipeline_completion\"\n| where toint(customDimensions[\"tokenCount\"]) > 0\n| summarize\n    TotalTokens = sum(toint(customDimensions[\"tokenCount\"])),\n    AvgTokens = round(avg(toint(customDimensions[\"tokenCount\"])), 0),\n    LLMInvocations = count()\n| extend EstimatedCostUSD = round(toreal(TotalTokens) * 0.000005, 4);\nprint x=1 | project Metric = 'Total Tokens', Value = toreal(toscalar(data | project TotalTokens))\n| union (print x=1 | project Metric = 'Avg Tokens/Call', Value = toreal(toscalar(data | project AvgTokens)))\n| union (print x=1 | project Metric = 'LLM Invocations', Value = toreal(toscalar(data | project LLMInvocations)))\n| union (print x=1 | project Metric = 'Est. Cost (USD)', Value = toreal(toscalar(data | project EstimatedCostUSD)))",
               "size": 4,
               "title": "LLM Token Usage",
               "queryType": 0,
               "resourceType": "microsoft.insights/components",
               "visualization": "tiles",
               "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Metric",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "auto"
+                  },
+                  "numberFormat": {
+                    "unit": 0,
+                    "options": {
+                      "style": "decimal",
+                      "maximumFractionDigits": 4
+                    }
+                  }
+                },
                 "showBorder": true
               }
             },
@@ -281,13 +306,31 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "traces\n| where timestamp {TimeRange}\n| where customDimensions[\"event\"] == \"pipeline_completion\"\n| summarize\n    Total = count(),\n    Errors = countif(tostring(customDimensions[\"status\"]) == \"ERROR\"),\n    Blocked = countif(tostring(customDimensions[\"status\"]) == \"BLOCK\")\n| extend ErrorRatePct = iff(Total > 0, round(100.0 * Errors / Total, 1), 0.0)\n| extend BlockRatePct = iff(Total > 0, round(100.0 * Blocked / Total, 1), 0.0)",
+              "query": "let data = traces\n| where timestamp {TimeRange}\n| where customDimensions[\"event\"] == \"pipeline_completion\"\n| summarize\n    Total = count(),\n    Errors = countif(tostring(customDimensions[\"status\"]) == \"ERROR\"),\n    Blocked = countif(tostring(customDimensions[\"status\"]) == \"BLOCK\")\n| extend ErrorRatePct = iff(Total > 0, round(100.0 * Errors / Total, 1), 0.0)\n| extend BlockRatePct = iff(Total > 0, round(100.0 * Blocked / Total, 1), 0.0);\nprint x=1 | project Metric = 'Error Rate (%)', Value = toreal(toscalar(data | project ErrorRatePct))\n| union (print x=1 | project Metric = 'Block Rate (%)', Value = toreal(toscalar(data | project BlockRatePct)))\n| union (print x=1 | project Metric = 'Total Errors', Value = toreal(toscalar(data | project Errors)))\n| union (print x=1 | project Metric = 'Total Blocked', Value = toreal(toscalar(data | project Blocked)))",
               "size": 4,
               "title": "Error & Block Rates",
               "queryType": 0,
               "resourceType": "microsoft.insights/components",
               "visualization": "tiles",
               "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Metric",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "auto"
+                  },
+                  "numberFormat": {
+                    "unit": 0,
+                    "options": {
+                      "style": "decimal",
+                      "maximumFractionDigits": 1
+                    }
+                  }
+                },
                 "showBorder": true
               }
             },
@@ -318,6 +361,7 @@
               "query": "traces\n| where timestamp {TimeRange}\n| where customDimensions[\"event\"] == \"pipeline_completion\"\n| where tostring(customDimensions[\"status\"]) == \"BLOCK\" or tostring(customDimensions[\"status\"]) == \"ERROR\"\n| project\n    Timestamp = timestamp,\n    CorrelationId = tostring(customDimensions[\"correlationId\"]),\n    Status = tostring(customDimensions[\"status\"]),\n    Stage = tostring(customDimensions[\"stage\"]),\n    ValidationStatus = tostring(customDimensions[\"validationStatus\"]),\n    DurationMs = toint(customDimensions[\"durationMs\"])\n| order by Timestamp desc",
               "size": 0,
               "title": "Recent Blocked & Error Executions",
+              "noDataMessage": "No blocked or error executions in the selected time range -- the system is operating cleanly.",
               "queryType": 0,
               "resourceType": "microsoft.insights/components",
               "visualization": "table",
@@ -383,9 +427,10 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "traces\n| where timestamp > ago(7d)\n| where isnotempty(\"{CorrelationId}\")\n| where tostring(customDimensions[\"correlationId\"]) == \"{CorrelationId}\"\n| project\n    Timestamp = timestamp,\n    Event = message,\n    Stage = tostring(customDimensions[\"stage\"]),\n    Status = tostring(customDimensions[\"status\"]),\n    DurationMs = toint(customDimensions[\"durationMs\"]),\n    Element = tostring(customDimensions[\"elementName\"]),\n    EventType = tostring(customDimensions[\"event\"])\n| order by Timestamp asc",
+              "query": "traces\n| where timestamp > ago(7d)\n| where strlen(\"{CorrelationId}\") > 0\n| where tostring(customDimensions[\"correlationId\"]) == \"{CorrelationId}\"\n| project\n    Timestamp = timestamp,\n    Event = message,\n    Stage = tostring(customDimensions[\"stage\"]),\n    Status = tostring(customDimensions[\"status\"]),\n    DurationMs = toint(customDimensions[\"durationMs\"]),\n    Element = tostring(customDimensions[\"elementName\"]),\n    EventType = tostring(customDimensions[\"event\"])\n| order by Timestamp asc",
               "size": 0,
               "title": "Trace for Correlation ID",
+              "noDataMessage": "Enter a Correlation ID above to view the execution trace. You can copy one from the Recent Executions table below.",
               "queryType": 0,
               "resourceType": "microsoft.insights/components",
               "visualization": "table",
