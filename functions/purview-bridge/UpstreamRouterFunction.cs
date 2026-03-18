@@ -120,7 +120,7 @@ public class UpstreamRouterFunction
 
         var purviewAccount = Environment.GetEnvironmentVariable("PurviewAccountName")
             ?? throw new InvalidOperationException("PurviewAccountName app setting is missing");
-        var baseUrl = $"https://{purviewAccount}.purview.azure.com/catalog/api";
+        var baseUrl = $"https://{purviewAccount}.purview.azure.com/datamap/api";
 
         // ------------------------------------------------------------------ //
         // 3. Search Purview for the azure_sql_db entity matching dbName
@@ -201,16 +201,27 @@ public class UpstreamRouterFunction
     // DB NAME RESOLUTION
     // ---------------------------------------------------------------------- //
 
+    // Regex to detect hashed/opaque DataSourceName values produced by lineage scans.
+    // These are SHA-256 hex strings (64 chars), optionally prefixed with "lineage_".
+    // They do NOT map to searchable Purview entity names and must be skipped.
+    private static readonly Regex HashedDsnRegex =
+        new(@"^(lineage_)?[A-F0-9]{32,}$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     /// <summary>
     /// Resolves the database name from the incoming Service Bus message.
     ///
     /// Azure Monitor wraps diagnostic log records in a "records" array when
-    /// forwarding to Event Hub. This method unwraps it when present.
+    /// forwarding to Event Hub. Each record may nest its fields inside a
+    /// "properties" sub-object (the standard Azure Monitor diagnostic format).
+    /// This method unwraps both layers.
     ///
-    /// Lookup order:
+    /// Lookup order (applied to both record-level and properties-level):
     ///   1. DataSourceName (PascalCase) — documented Azure Monitor column name
+    ///      (skipped if value looks like a hash, e.g. lineage extract events)
     ///   2. dataSourceName (camelCase)  — alternate serialisation observed in transit
+    ///      (skipped if value looks like a hash)
     ///   3. scanName / ScanName regex   — fallback for custom-named scans
+    ///      (extracts DB name from "lineage_for_{dbName}_{hex}" pattern)
     /// </summary>
     private string ResolveDbName(string message)
     {
@@ -222,39 +233,73 @@ public class UpstreamRouterFunction
         if (root.TryGetProperty("records", out var recordsArr) && recordsArr.GetArrayLength() > 0)
             record = recordsArr[0];
 
-        // Primary: DataSourceName / dataSourceName
-        foreach (var fieldName in new[] { "DataSourceName", "dataSourceName" })
+        // Build the list of elements to search: record itself + properties sub-object.
+        // Azure Monitor diagnostic logs nest actual fields inside "properties".
+        var searchTargets = new List<JsonElement> { record };
+        if (record.TryGetProperty("properties", out var propsElement)
+            && propsElement.ValueKind == JsonValueKind.Object)
         {
-            if (record.TryGetProperty(fieldName, out var dsnProp))
+            searchTargets.Add(propsElement);
+        }
+
+        // Primary: DataSourceName / dataSourceName (on each search target)
+        foreach (var target in searchTargets)
+        {
+            foreach (var fieldName in new[] { "DataSourceName", "dataSourceName" })
             {
-                var dsn = dsnProp.GetString();
-                if (!string.IsNullOrWhiteSpace(dsn))
+                if (target.TryGetProperty(fieldName, out var dsnProp))
                 {
-                    _logger.LogInformation("DB name resolved via {Field}: {DbName}", fieldName, dsn);
-                    return dsn;
+                    var dsn = dsnProp.GetString();
+                    if (!string.IsNullOrWhiteSpace(dsn))
+                    {
+                        // Skip hashed/opaque values from lineage extract events —
+                        // they don't resolve to Purview entity names.
+                        if (HashedDsnRegex.IsMatch(dsn))
+                        {
+                            _logger.LogInformation(
+                                "Skipping hashed DataSourceName (lineage extract): {Dsn}", dsn);
+                            continue;
+                        }
+
+                        _logger.LogInformation("DB name resolved via {Field}: {DbName}", fieldName, dsn);
+                        return dsn;
+                    }
                 }
             }
         }
 
-        // Fallback: regex on scanName / ScanName
+        // Fallback: regex on scanName / ScanName (on each search target)
+        // Extracts DB name from "lineage_for_{dbName}_{hexchars}" pattern.
         // WARNING: this format is NOT guaranteed by Microsoft — it reflects a
-        // custom scan naming convention in this environment. Do not rely on it
-        // in new scan configurations.
-        foreach (var fieldName in new[] { "scanName", "ScanName" })
+        // custom scan naming convention in this environment.
+        foreach (var target in searchTargets)
         {
-            if (record.TryGetProperty(fieldName, out var snProp))
+            foreach (var fieldName in new[] { "scanName", "ScanName" })
             {
-                var scanName = snProp.GetString() ?? string.Empty;
-                var match = ScanNameRegex.Match(scanName);
-                if (match.Success)
+                if (target.TryGetProperty(fieldName, out var snProp))
                 {
-                    var dbName = match.Groups[1].Value;
-                    _logger.LogWarning(
-                        "DB name resolved via scanName regex fallback: {DbName}. " +
-                        "Consider adding DataSourceName to scan events to avoid fragile parsing.",
-                        dbName);
-                    return dbName;
+                    var scanName = snProp.GetString() ?? string.Empty;
+                    var match = ScanNameRegex.Match(scanName);
+                    if (match.Success)
+                    {
+                        var dbName = match.Groups[1].Value;
+                        _logger.LogInformation(
+                            "DB name resolved via scanName regex (lineage extract): {DbName}", dbName);
+                        return dbName;
+                    }
                 }
+            }
+        }
+
+        // Log the event type for diagnostics when resolution fails
+        foreach (var target in searchTargets)
+        {
+            if (target.TryGetProperty("dataSourceType", out var dstProp))
+            {
+                _logger.LogWarning(
+                    "DB name unresolved for event type {EventType} — skipping",
+                    dstProp.GetString());
+                break;
             }
         }
 
