@@ -40,6 +40,7 @@ param searchSku = 'basic'  // Basic tier for Azure AI Search in Dev per architec
 param deploySearchIndex = false  // Index already created manually (deployment script had auth issues in ACI)
 param deployStorage = true      // Canonical storage aimetadatadevstganpqtlf2 deployed and validated
 param deploySearch = true       // Enable Azure AI Search (required for RAG)
+param deploySearchIndexers = true  // Enable blob indexers (synergy, zipline, documentation) with PT1H schedule and MI auth
 
 // Cosmos containers are deployed in Phase 2 (disabled for Phase 1)
 param deployCosmosContainers = true

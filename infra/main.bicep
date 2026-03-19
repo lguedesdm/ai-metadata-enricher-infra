@@ -131,6 +131,9 @@ param eventHubSku string = 'Standard'
 @description('Deploy Functions module (Purview Bridge Function App + plan + backing storage)')
 param deployFunctions bool = false
 
+@description('Deploy blob indexers and data sources for AI Search (synergy, zipline, documentation)')
+param deploySearchIndexers bool = false
+
 @description('Event Hub namespace name. Required when deployFunctions=true and deployEventHub=false.')
 param eventHubNamespaceName string = ''
 
@@ -209,6 +212,9 @@ module search 'search/main.bicep' = if (deploySearch) {
     tags: core.outputs.resourceTags
     searchSku: searchSku
     deployIndex: deploySearchIndex
+    deployIndexers: deploySearchIndexers
+    storageAccountResourceId: deployStorage ? storage.outputs.storageAccountId : ''
+    storageAccountName: deployStorage ? storage.outputs.storageAccountName : ''
   }
 }
 

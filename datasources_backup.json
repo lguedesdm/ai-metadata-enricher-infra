@@ -1,0 +1,56 @@
+{
+  "@odata.context": "https://ai-metadata-dev-search.search.windows.net/$metadata#datasources",
+  "value": [
+    {
+      "@odata.etag": "\"0x8DE85CEF0196D06\"",
+      "container": {
+        "name": "documentation",
+        "query": null
+      },
+      "credentials": {
+        "connectionString": null
+      },
+      "dataChangeDetectionPolicy": null,
+      "dataDeletionDetectionPolicy": null,
+      "description": null,
+      "encryptionKey": null,
+      "name": "blob-metadata-datasource",
+      "subtype": null,
+      "type": "azureblob"
+    },
+    {
+      "@odata.etag": "\"0x8DE85CEFD19F17B\"",
+      "container": {
+        "name": "synergy",
+        "query": null
+      },
+      "credentials": {
+        "connectionString": null
+      },
+      "dataChangeDetectionPolicy": null,
+      "dataDeletionDetectionPolicy": null,
+      "description": null,
+      "encryptionKey": null,
+      "name": "blob-synergy-datasource",
+      "subtype": null,
+      "type": "azureblob"
+    },
+    {
+      "@odata.etag": "\"0x8DE85CEFDB11BA7\"",
+      "container": {
+        "name": "zipline",
+        "query": null
+      },
+      "credentials": {
+        "connectionString": null
+      },
+      "dataChangeDetectionPolicy": null,
+      "dataDeletionDetectionPolicy": null,
+      "description": null,
+      "encryptionKey": null,
+      "name": "blob-zipline-datasource",
+      "subtype": null,
+      "type": "azureblob"
+    }
+  ]
+}
