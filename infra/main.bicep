@@ -134,6 +134,9 @@ param deployFunctions bool = false
 @description('Deploy blob indexers and data sources for AI Search (synergy, zipline, documentation)')
 param deploySearchIndexers bool = false
 
+@description('Email address for Azure Monitor alert notifications')
+param alertEmail string = ''
+
 @description('Event Hub namespace name. Required when deployFunctions=true and deployEventHub=false.')
 param eventHubNamespaceName string = ''
 
@@ -364,6 +367,8 @@ module observability 'observability/main.bicep' = if (deployObservability) {
     location: core.outputs.resourceLocation
     tags: core.outputs.resourceTags
     retentionDays: logRetentionDays
+    alertEmail: alertEmail
+    serviceBusNamespaceId: messaging.outputs.serviceBusNamespaceId
   }
 }
 

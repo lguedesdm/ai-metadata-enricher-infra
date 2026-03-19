@@ -1,0 +1,13 @@
+{
+  "container": "documentation",
+  "purpose": "Contextual documentation files (Word, Excel, Markdown, PDF) providing business rules, legislation references, procedural documentation, and data dictionaries",
+  "structure": "Unstructured files. Supported formats: .md, .txt, .docx, .xlsx, .pdf. AI Search indexer uses default text parsing",
+  "updateFrequency": "DOE-managed, as documentation is updated",
+  "schemaVersion": "1.0.0",
+  "owner": "SD DOE",
+  "indexer": "metadata-context-indexer",
+  "parsingMode": "default (text)",
+  "documentRoot": null,
+  "fieldMappings": "default (no custom mappings)",
+  "lastReviewed": "2026-03-19"
+}

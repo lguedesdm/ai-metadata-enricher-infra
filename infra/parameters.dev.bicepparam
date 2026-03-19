@@ -73,6 +73,7 @@ param containerImage = 'craimetadatadev.azurecr.io/ai-metadata-orchestrator:dev'
 // =============================================================================
 
 param deployObservability = true  // Enable Log Analytics workspace + Application Insights
+param alertEmail = 'leonardo.guedes@datameaning.com'  // Azure Monitor alert notifications
 
 // =============================================================================
 // PURVIEW PARAMETERS

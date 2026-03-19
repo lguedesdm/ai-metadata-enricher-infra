@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.39.26.7824",
-      "templateHash": "6677877063332412028"
+      "templateHash": "15286325997715291401"
     }
   },
   "parameters": {
@@ -260,6 +260,13 @@
       "defaultValue": false,
       "metadata": {
         "description": "Deploy blob indexers and data sources for AI Search (synergy, zipline, documentation)"
+      }
+    },
+    "alertEmail": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Email address for Azure Monitor alert notifications"
       }
     },
     "eventHubNamespaceName": {
@@ -2188,6 +2195,12 @@
           },
           "retentionDays": {
             "value": "[parameters('logRetentionDays')]"
+          },
+          "alertEmail": {
+            "value": "[parameters('alertEmail')]"
+          },
+          "serviceBusNamespaceId": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))), 'Microsoft.Resources/deployments', 'messaging-deployment'), '2025-04-01').outputs.serviceBusNamespaceId.value]"
           }
         },
         "template": {
@@ -2197,7 +2210,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.39.26.7824",
-              "templateHash": "8648967277497901669"
+              "templateHash": "1325480410872246817"
             }
           },
           "parameters": {
@@ -2233,6 +2246,27 @@
               "defaultValue": true,
               "metadata": {
                 "description": "Deploy the Pipeline Dashboard workbook (default true)"
+              }
+            },
+            "deployAlerts": {
+              "type": "bool",
+              "defaultValue": true,
+              "metadata": {
+                "description": "Deploy Azure Monitor alert rules (default true when observability is deployed)"
+              }
+            },
+            "alertEmail": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Email address for alert notifications"
+              }
+            },
+            "serviceBusNamespaceId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Service Bus namespace resource ID (required when deployAlerts=true for DLQ metric alerts)"
               }
             }
           },
@@ -2375,6 +2409,462 @@
               "dependsOn": [
                 "[resourceId('Microsoft.Insights/components', format('appi-{0}', parameters('resourcePrefix')))]"
               ]
+            },
+            {
+              "condition": "[and(parameters('deployAlerts'), not(empty(parameters('alertEmail'))))]",
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2025-04-01",
+              "name": "alerts-deployment",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "resourcePrefix": {
+                    "value": "[parameters('resourcePrefix')]"
+                  },
+                  "location": {
+                    "value": "[parameters('location')]"
+                  },
+                  "tags": {
+                    "value": "[parameters('tags')]"
+                  },
+                  "appInsightsId": {
+                    "value": "[resourceId('Microsoft.Insights/components', format('appi-{0}', parameters('resourcePrefix')))]"
+                  },
+                  "serviceBusNamespaceId": {
+                    "value": "[parameters('serviceBusNamespaceId')]"
+                  },
+                  "alertEmail": {
+                    "value": "[parameters('alertEmail')]"
+                  }
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "contentVersion": "1.0.0.0",
+                  "metadata": {
+                    "_generator": {
+                      "name": "bicep",
+                      "version": "0.39.26.7824",
+                      "templateHash": "16303003148705232437"
+                    }
+                  },
+                  "parameters": {
+                    "resourcePrefix": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Resource name prefix (e.g. ai-metadata-dev)"
+                      }
+                    },
+                    "location": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Azure region for all resources"
+                      }
+                    },
+                    "tags": {
+                      "type": "object",
+                      "metadata": {
+                        "description": "Tags to apply to all resources"
+                      }
+                    },
+                    "appInsightsId": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Application Insights resource ID (used as query scope for log alerts)"
+                      }
+                    },
+                    "serviceBusNamespaceId": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Service Bus namespace resource ID (used as scope for metric alerts)"
+                      }
+                    },
+                    "alertEmail": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Email address for alert notifications"
+                      }
+                    }
+                  },
+                  "resources": [
+                    {
+                      "type": "Microsoft.Insights/actionGroups",
+                      "apiVersion": "2023-01-01",
+                      "name": "[format('ag-{0}', parameters('resourcePrefix'))]",
+                      "location": "global",
+                      "tags": "[parameters('tags')]",
+                      "properties": {
+                        "groupShortName": "aime-alerts",
+                        "enabled": true,
+                        "emailReceivers": [
+                          {
+                            "name": "PipelineOps",
+                            "emailAddress": "[parameters('alertEmail')]",
+                            "useCommonAlertSchema": true
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "type": "Microsoft.Insights/scheduledQueryRules",
+                      "apiVersion": "2023-03-15-preview",
+                      "name": "[format('alert-error-rate-{0}', parameters('resourcePrefix'))]",
+                      "location": "[parameters('location')]",
+                      "tags": "[parameters('tags')]",
+                      "properties": {
+                        "displayName": "AIME — High Error Rate (>10%)",
+                        "description": "Pipeline error rate exceeded 10% in the last hour. Investigate failed enrichments.",
+                        "severity": 2,
+                        "enabled": true,
+                        "evaluationFrequency": "PT15M",
+                        "windowSize": "PT1H",
+                        "scopes": [
+                          "[parameters('appInsightsId')]"
+                        ],
+                        "criteria": {
+                          "allOf": [
+                            {
+                              "query": "traces\n| where timestamp > ago(1h)\n| where customDimensions['event'] == 'pipeline_completion'\n| summarize Total = count(), Errors = countif(tostring(customDimensions['status']) == 'ERROR')\n| where Total > 0 and Errors * 100 / Total > 10\n",
+                              "timeAggregation": "Count",
+                              "operator": "GreaterThan",
+                              "threshold": 0,
+                              "failingPeriods": {
+                                "numberOfEvaluationPeriods": 1,
+                                "minFailingPeriodsToAlert": 1
+                              }
+                            }
+                          ]
+                        },
+                        "actions": {
+                          "actionGroups": [
+                            "[resourceId('Microsoft.Insights/actionGroups', format('ag-{0}', parameters('resourcePrefix')))]"
+                          ]
+                        }
+                      },
+                      "dependsOn": [
+                        "[resourceId('Microsoft.Insights/actionGroups', format('ag-{0}', parameters('resourcePrefix')))]"
+                      ]
+                    },
+                    {
+                      "type": "Microsoft.Insights/scheduledQueryRules",
+                      "apiVersion": "2023-03-15-preview",
+                      "name": "[format('alert-inactivity-{0}', parameters('resourcePrefix'))]",
+                      "location": "[parameters('location')]",
+                      "tags": "[parameters('tags')]",
+                      "properties": {
+                        "displayName": "AIME — Pipeline Inactive (0 executions in 2h)",
+                        "description": "No pipeline_completion events detected in 2 hours. Orchestrator may be down or queue empty.",
+                        "severity": 1,
+                        "enabled": true,
+                        "evaluationFrequency": "PT15M",
+                        "windowSize": "PT2H",
+                        "scopes": [
+                          "[parameters('appInsightsId')]"
+                        ],
+                        "criteria": {
+                          "allOf": [
+                            {
+                              "query": "traces\n| where timestamp > ago(2h)\n| where customDimensions['event'] == 'pipeline_completion'\n| summarize Total = count()\n| where Total == 0\n",
+                              "timeAggregation": "Count",
+                              "operator": "GreaterThan",
+                              "threshold": 0,
+                              "failingPeriods": {
+                                "numberOfEvaluationPeriods": 1,
+                                "minFailingPeriodsToAlert": 1
+                              }
+                            }
+                          ]
+                        },
+                        "actions": {
+                          "actionGroups": [
+                            "[resourceId('Microsoft.Insights/actionGroups', format('ag-{0}', parameters('resourcePrefix')))]"
+                          ]
+                        }
+                      },
+                      "dependsOn": [
+                        "[resourceId('Microsoft.Insights/actionGroups', format('ag-{0}', parameters('resourcePrefix')))]"
+                      ]
+                    },
+                    {
+                      "type": "Microsoft.Insights/scheduledQueryRules",
+                      "apiVersion": "2023-03-15-preview",
+                      "name": "[format('alert-block-rate-{0}', parameters('resourcePrefix'))]",
+                      "location": "[parameters('location')]",
+                      "tags": "[parameters('tags')]",
+                      "properties": {
+                        "displayName": "AIME — High Block Rate (>25%)",
+                        "description": "Validation block rate exceeded 25% in the last hour. Review LLM output quality or prompt.",
+                        "severity": 3,
+                        "enabled": true,
+                        "evaluationFrequency": "PT15M",
+                        "windowSize": "PT1H",
+                        "scopes": [
+                          "[parameters('appInsightsId')]"
+                        ],
+                        "criteria": {
+                          "allOf": [
+                            {
+                              "query": "traces\n| where timestamp > ago(1h)\n| where customDimensions['event'] == 'pipeline_completion'\n| summarize Total = count(), Blocked = countif(tostring(customDimensions['status']) == 'BLOCK')\n| where Total > 0 and Blocked * 100 / Total > 25\n",
+                              "timeAggregation": "Count",
+                              "operator": "GreaterThan",
+                              "threshold": 0,
+                              "failingPeriods": {
+                                "numberOfEvaluationPeriods": 1,
+                                "minFailingPeriodsToAlert": 1
+                              }
+                            }
+                          ]
+                        },
+                        "actions": {
+                          "actionGroups": [
+                            "[resourceId('Microsoft.Insights/actionGroups', format('ag-{0}', parameters('resourcePrefix')))]"
+                          ]
+                        }
+                      },
+                      "dependsOn": [
+                        "[resourceId('Microsoft.Insights/actionGroups', format('ag-{0}', parameters('resourcePrefix')))]"
+                      ]
+                    },
+                    {
+                      "type": "Microsoft.Insights/scheduledQueryRules",
+                      "apiVersion": "2023-03-15-preview",
+                      "name": "[format('alert-heartbeat-bridge-{0}', parameters('resourcePrefix'))]",
+                      "location": "[parameters('location')]",
+                      "tags": "[parameters('tags')]",
+                      "properties": {
+                        "displayName": "AIME — Heartbeat Loss: Bridge",
+                        "description": "No host_alive heartbeat from HeuristicTriggerBridge for >10 minutes.",
+                        "severity": 1,
+                        "enabled": true,
+                        "evaluationFrequency": "PT5M",
+                        "windowSize": "PT10M",
+                        "scopes": [
+                          "[parameters('appInsightsId')]"
+                        ],
+                        "criteria": {
+                          "allOf": [
+                            {
+                              "query": "traces\n| where timestamp > ago(10m)\n| where message == 'host_alive' and customDimensions['service'] == 'bridge'\n| summarize HeartbeatCount = count()\n| where HeartbeatCount == 0\n",
+                              "timeAggregation": "Count",
+                              "operator": "GreaterThan",
+                              "threshold": 0,
+                              "failingPeriods": {
+                                "numberOfEvaluationPeriods": 1,
+                                "minFailingPeriodsToAlert": 1
+                              }
+                            }
+                          ]
+                        },
+                        "actions": {
+                          "actionGroups": [
+                            "[resourceId('Microsoft.Insights/actionGroups', format('ag-{0}', parameters('resourcePrefix')))]"
+                          ]
+                        }
+                      },
+                      "dependsOn": [
+                        "[resourceId('Microsoft.Insights/actionGroups', format('ag-{0}', parameters('resourcePrefix')))]"
+                      ]
+                    },
+                    {
+                      "type": "Microsoft.Insights/scheduledQueryRules",
+                      "apiVersion": "2023-03-15-preview",
+                      "name": "[format('alert-heartbeat-router-{0}', parameters('resourcePrefix'))]",
+                      "location": "[parameters('location')]",
+                      "tags": "[parameters('tags')]",
+                      "properties": {
+                        "displayName": "AIME — Heartbeat Loss: Router",
+                        "description": "No host_alive heartbeat from UpstreamRouterFunction for >10 minutes.",
+                        "severity": 1,
+                        "enabled": true,
+                        "evaluationFrequency": "PT5M",
+                        "windowSize": "PT10M",
+                        "scopes": [
+                          "[parameters('appInsightsId')]"
+                        ],
+                        "criteria": {
+                          "allOf": [
+                            {
+                              "query": "traces\n| where timestamp > ago(10m)\n| where message == 'host_alive' and customDimensions['service'] == 'router'\n| summarize HeartbeatCount = count()\n| where HeartbeatCount == 0\n",
+                              "timeAggregation": "Count",
+                              "operator": "GreaterThan",
+                              "threshold": 0,
+                              "failingPeriods": {
+                                "numberOfEvaluationPeriods": 1,
+                                "minFailingPeriodsToAlert": 1
+                              }
+                            }
+                          ]
+                        },
+                        "actions": {
+                          "actionGroups": [
+                            "[resourceId('Microsoft.Insights/actionGroups', format('ag-{0}', parameters('resourcePrefix')))]"
+                          ]
+                        }
+                      },
+                      "dependsOn": [
+                        "[resourceId('Microsoft.Insights/actionGroups', format('ag-{0}', parameters('resourcePrefix')))]"
+                      ]
+                    },
+                    {
+                      "type": "Microsoft.Insights/scheduledQueryRules",
+                      "apiVersion": "2023-03-15-preview",
+                      "name": "[format('alert-heartbeat-orch-{0}', parameters('resourcePrefix'))]",
+                      "location": "[parameters('location')]",
+                      "tags": "[parameters('tags')]",
+                      "properties": {
+                        "displayName": "AIME — Heartbeat Loss: Orchestrator",
+                        "description": "No host_alive heartbeat from Orchestrator for >10 minutes.",
+                        "severity": 1,
+                        "enabled": true,
+                        "evaluationFrequency": "PT5M",
+                        "windowSize": "PT10M",
+                        "scopes": [
+                          "[parameters('appInsightsId')]"
+                        ],
+                        "criteria": {
+                          "allOf": [
+                            {
+                              "query": "traces\n| where timestamp > ago(10m)\n| where message == 'host_alive' and customDimensions['service'] == 'orchestrator'\n| summarize HeartbeatCount = count()\n| where HeartbeatCount == 0\n",
+                              "timeAggregation": "Count",
+                              "operator": "GreaterThan",
+                              "threshold": 0,
+                              "failingPeriods": {
+                                "numberOfEvaluationPeriods": 1,
+                                "minFailingPeriodsToAlert": 1
+                              }
+                            }
+                          ]
+                        },
+                        "actions": {
+                          "actionGroups": [
+                            "[resourceId('Microsoft.Insights/actionGroups', format('ag-{0}', parameters('resourcePrefix')))]"
+                          ]
+                        }
+                      },
+                      "dependsOn": [
+                        "[resourceId('Microsoft.Insights/actionGroups', format('ag-{0}', parameters('resourcePrefix')))]"
+                      ]
+                    },
+                    {
+                      "type": "Microsoft.Insights/metricAlerts",
+                      "apiVersion": "2018-03-01",
+                      "name": "[format('alert-dlq-enrichment-{0}', parameters('resourcePrefix'))]",
+                      "location": "global",
+                      "tags": "[parameters('tags')]",
+                      "properties": {
+                        "description": "Dead-letter messages detected on enrichment-requests queue. Messages exhausted maxDeliveryCount (10).",
+                        "severity": 2,
+                        "enabled": true,
+                        "evaluationFrequency": "PT5M",
+                        "windowSize": "PT15M",
+                        "scopes": [
+                          "[parameters('serviceBusNamespaceId')]"
+                        ],
+                        "criteria": {
+                          "odata.type": "Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria",
+                          "allOf": [
+                            {
+                              "name": "DLQ_enrichment_requests",
+                              "metricName": "DeadletteredMessages",
+                              "metricNamespace": "Microsoft.ServiceBus/namespaces",
+                              "operator": "GreaterThan",
+                              "threshold": 0,
+                              "timeAggregation": "Maximum",
+                              "dimensions": [
+                                {
+                                  "name": "EntityName",
+                                  "operator": "Include",
+                                  "values": [
+                                    "enrichment-requests"
+                                  ]
+                                }
+                              ],
+                              "criterionType": "StaticThresholdCriterion"
+                            }
+                          ]
+                        },
+                        "actions": [
+                          {
+                            "actionGroupId": "[resourceId('Microsoft.Insights/actionGroups', format('ag-{0}', parameters('resourcePrefix')))]"
+                          }
+                        ]
+                      },
+                      "dependsOn": [
+                        "[resourceId('Microsoft.Insights/actionGroups', format('ag-{0}', parameters('resourcePrefix')))]"
+                      ]
+                    },
+                    {
+                      "type": "Microsoft.Insights/metricAlerts",
+                      "apiVersion": "2018-03-01",
+                      "name": "[format('alert-dlq-purview-{0}', parameters('resourcePrefix'))]",
+                      "location": "global",
+                      "tags": "[parameters('tags')]",
+                      "properties": {
+                        "description": "Dead-letter messages detected on purview-events queue. Messages exhausted maxDeliveryCount (10).",
+                        "severity": 2,
+                        "enabled": true,
+                        "evaluationFrequency": "PT5M",
+                        "windowSize": "PT15M",
+                        "scopes": [
+                          "[parameters('serviceBusNamespaceId')]"
+                        ],
+                        "criteria": {
+                          "odata.type": "Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria",
+                          "allOf": [
+                            {
+                              "name": "DLQ_purview_events",
+                              "metricName": "DeadletteredMessages",
+                              "metricNamespace": "Microsoft.ServiceBus/namespaces",
+                              "operator": "GreaterThan",
+                              "threshold": 0,
+                              "timeAggregation": "Maximum",
+                              "dimensions": [
+                                {
+                                  "name": "EntityName",
+                                  "operator": "Include",
+                                  "values": [
+                                    "purview-events"
+                                  ]
+                                }
+                              ],
+                              "criterionType": "StaticThresholdCriterion"
+                            }
+                          ]
+                        },
+                        "actions": [
+                          {
+                            "actionGroupId": "[resourceId('Microsoft.Insights/actionGroups', format('ag-{0}', parameters('resourcePrefix')))]"
+                          }
+                        ]
+                      },
+                      "dependsOn": [
+                        "[resourceId('Microsoft.Insights/actionGroups', format('ag-{0}', parameters('resourcePrefix')))]"
+                      ]
+                    }
+                  ],
+                  "outputs": {
+                    "actionGroupId": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Action group resource ID"
+                      },
+                      "value": "[resourceId('Microsoft.Insights/actionGroups', format('ag-{0}', parameters('resourcePrefix')))]"
+                    },
+                    "actionGroupName": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Action group name"
+                      },
+                      "value": "[format('ag-{0}', parameters('resourcePrefix'))]"
+                    }
+                  }
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Insights/components', format('appi-{0}', parameters('resourcePrefix')))]"
+              ]
             }
           ],
           "outputs": {
@@ -2440,12 +2930,27 @@
                 "description": "Pipeline Dashboard workbook name (empty when deployWorkbook=false)"
               },
               "value": "[if(parameters('deployWorkbook'), reference(resourceId('Microsoft.Resources/deployments', 'workbook-deployment'), '2025-04-01').outputs.workbookName.value, '')]"
+            },
+            "actionGroupId": {
+              "type": "string",
+              "metadata": {
+                "description": "Action group resource ID (empty when deployAlerts=false)"
+              },
+              "value": "[if(and(parameters('deployAlerts'), not(empty(parameters('alertEmail')))), reference(resourceId('Microsoft.Resources/deployments', 'alerts-deployment'), '2025-04-01').outputs.actionGroupId.value, '')]"
+            },
+            "actionGroupName": {
+              "type": "string",
+              "metadata": {
+                "description": "Action group name (empty when deployAlerts=false)"
+              },
+              "value": "[if(and(parameters('deployAlerts'), not(empty(parameters('alertEmail')))), reference(resourceId('Microsoft.Resources/deployments', 'alerts-deployment'), '2025-04-01').outputs.actionGroupName.value, '')]"
             }
           }
         }
       },
       "dependsOn": [
         "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))), 'Microsoft.Resources/deployments', 'core-deployment')]",
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('rg-{0}-{1}', parameters('projectName'), parameters('environment'))), 'Microsoft.Resources/deployments', 'messaging-deployment')]",
         "[subscriptionResourceId('Microsoft.Resources/resourceGroups', format('rg-{0}-{1}', parameters('projectName'), parameters('environment')))]"
       ]
     },

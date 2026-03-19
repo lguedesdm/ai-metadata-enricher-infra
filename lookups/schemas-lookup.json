@@ -1,0 +1,13 @@
+{
+  "container": "schemas",
+  "purpose": "JSON schema definitions, metadata schemas, and source system schema contracts. Not indexed by AI Search — used for validation and reference only",
+  "structure": "JSON files with schema definitions. Structure varies by source system",
+  "updateFrequency": "On schema changes (versioned, requires ADR approval for breaking changes)",
+  "schemaVersion": "1.0.0",
+  "owner": "Project team / Data Meaning",
+  "indexer": null,
+  "parsingMode": null,
+  "documentRoot": null,
+  "fieldMappings": null,
+  "lastReviewed": "2026-03-19"
+}

@@ -119,6 +119,15 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
 @description('Deploy the Pipeline Dashboard workbook (default true)')
 param deployWorkbook bool = true
 
+@description('Deploy Azure Monitor alert rules (default true when observability is deployed)')
+param deployAlerts bool = true
+
+@description('Email address for alert notifications')
+param alertEmail string = ''
+
+@description('Service Bus namespace resource ID (required when deployAlerts=true for DLQ metric alerts)')
+param serviceBusNamespaceId string = ''
+
 module workbook 'workbook.bicep' = if (deployWorkbook) {
   name: 'workbook-deployment'
   params: {
@@ -126,6 +135,26 @@ module workbook 'workbook.bicep' = if (deployWorkbook) {
     location: location
     appInsightsId: appInsights.id
     tags: tags
+  }
+}
+
+// =============================================================================
+// ALERT RULES
+// =============================================================================
+// Azure Monitor alert rules for proactive operational monitoring.
+// Deploys 8 alerts: 3 pipeline health, 3 heartbeat, 2 DLQ metric.
+// Controlled by deployAlerts parameter — defaults to true when observability
+// module is deployed.
+
+module alerts 'alerts.bicep' = if (deployAlerts && !empty(alertEmail)) {
+  name: 'alerts-deployment'
+  params: {
+    resourcePrefix: resourcePrefix
+    location: location
+    tags: tags
+    appInsightsId: appInsights.id
+    serviceBusNamespaceId: serviceBusNamespaceId
+    alertEmail: alertEmail
   }
 }
 
@@ -159,3 +188,9 @@ output workbookId string = deployWorkbook ? workbook.outputs.workbookId : ''
 
 @description('Pipeline Dashboard workbook name (empty when deployWorkbook=false)')
 output workbookName string = deployWorkbook ? workbook.outputs.workbookName : ''
+
+@description('Action group resource ID (empty when deployAlerts=false)')
+output actionGroupId string = (deployAlerts && !empty(alertEmail)) ? alerts.outputs.actionGroupId : ''
+
+@description('Action group name (empty when deployAlerts=false)')
+output actionGroupName string = (deployAlerts && !empty(alertEmail)) ? alerts.outputs.actionGroupName : ''

@@ -1,0 +1,25 @@
+{
+  "container": "zipline",
+  "purpose": "Zipline centralized metadata API exports with data dictionaries and element definitions for SD DOE systems",
+  "structure": "JSON file with root-level array. Each element contains: id, entityType, entityName, cedsReference, businessMeaning, sourceSystem, description, content, tags, lastUpdated",
+  "updateFrequency": "On-demand (manual export by DOE / Scott Moody)",
+  "schemaVersion": "2.0.0",
+  "owner": "SD DOE / Zipline team",
+  "indexer": "zipline-elements-indexer",
+  "parsingMode": "jsonArray",
+  "documentRoot": null,
+  "fieldMappings": [
+    "id -> id (base64Encode)",
+    "entityType -> elementType",
+    "entityName -> elementName",
+    "entityName -> title",
+    "cedsReference -> cedsLink",
+    "businessMeaning -> suggestedDescription",
+    "sourceSystem -> sourceSystem",
+    "description -> description",
+    "content -> content",
+    "tags -> tags",
+    "lastUpdated -> lastUpdated"
+  ],
+  "lastReviewed": "2026-03-19"
+}

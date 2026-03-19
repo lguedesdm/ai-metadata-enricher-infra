@@ -1,0 +1,22 @@
+{
+  "container": "synergy",
+  "purpose": "Synergy SIS data dictionary exports with field definitions and CEDS mappings",
+  "structure": "JSON file with /elements array. Each element contains: elementName, elementType, description, cedsLink, sourceSystem",
+  "updateFrequency": "On-demand (manual export by vendor/DOE)",
+  "schemaVersion": "2.0.0",
+  "owner": "SD DOE / Synergy vendor",
+  "indexer": "synergy-elements-indexer",
+  "parsingMode": "jsonArray",
+  "documentRoot": "/elements",
+  "fieldMappings": [
+    "elementName -> id (base64Encode)",
+    "elementName -> elementName",
+    "elementName -> title",
+    "elementType -> elementType",
+    "description -> description",
+    "description -> content",
+    "sourceSystem -> sourceSystem",
+    "cedsLink -> cedsLink"
+  ],
+  "lastReviewed": "2026-03-19"
+}
