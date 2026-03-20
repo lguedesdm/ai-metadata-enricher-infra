@@ -2,8 +2,9 @@
 // Microsoft Purview Dependency Module
 // =============================================================================
 // Purpose: Declares the dependency on a pre-provisioned Microsoft Purview
-// account and validates its existence at deploy time. Outputs the endpoint
-// consumed by the Orchestrator Container App as PURVIEW_ACCOUNT_NAME.
+// account and validates its existence at deploy time. Outputs the account
+// name consumed by the Orchestrator (PURVIEW_ACCOUNT_NAME) and the Bridge
+// Function App (PurviewAccountName).
 //
 // WHY THIS MODULE DOES NOT CREATE THE PURVIEW ACCOUNT
 // =====================================================
@@ -23,28 +24,45 @@
 //
 // REQUIRED MANUAL RBAC STEP (run once per environment)
 // =====================================================
-// Grant the Orchestrator Managed Identity the "Purview Data Curator" role
-// at the root collection of the Purview account:
+// TWO principals need "Purview Data Curator" at the root collection:
 //
+// 1. Orchestrator MI (Container App) — writes AI_Enrichment Business Metadata
 //   az purview account add-root-collection-admin \
 //     --account-name <purviewAccountName> \
 //     --resource-group <resourceGroup> \
 //     --object-id <orchestratorManagedIdentityPrincipalId>
 //
+// 2. Bridge Function App MI — reads entities for review status polling
+//   az purview account add-root-collection-admin \
+//     --account-name <purviewAccountName> \
+//     --resource-group <resourceGroup> \
+//     --object-id <bridgeFunctionAppManagedIdentityPrincipalId>
+//
 // Or via Purview Studio:
 //   Data Map > Collections > Root Collection > Role Assignments
-//   → Add "Data Curator" → paste the orchestrator MI principal ID
+//   → Add "Data Curator" → paste each MI principal ID
 //
-// This grants the orchestrator MI the ability to:
-//   - Read entity metadata (GET /catalog/api/atlas/v2/entity/guid/{guid})
-//   - Write Suggested Description (PUT /catalog/api/atlas/v2/entity/guid/{guid})
+// These grants allow:
+//   Orchestrator:
+//     - Read entity metadata (GET /datamap/api/atlas/v2/entity/guid/{guid})
+//     - Write AI_Enrichment Business Metadata (POST .../businessmetadata)
+//   Bridge Function App:
+//     - Read entity metadata for review_status polling (ReviewStatusPollFunction)
+//     - Search and bulk-fetch entities (UpstreamRouterFunction)
+//
+// MANUAL DATA-PLANE SETUP (run once per environment)
+// =====================================================
+// In addition to RBAC, the AI_Enrichment Business Metadata Type must be
+// created via the Purview REST API before the pipeline can write to it.
+// See infra/purview/README.md for the full setup steps.
 //
 // Token scope used by the runtime: "https://purview.azure.net/.default"
 // Auth: DefaultAzureCredential() — compatible with System-Assigned MI
 //
 // CONTRACT REFERENCE (runtime_architecture_contract.yaml):
 //   security.orchestrator_to_purview: MI
-//   purview.writebackPolicy.allowed_field: Suggested Description
+//   security.functions_to_purview: Purview Data Curator
+//   purview.writebackPolicy.allowed_field: AI_Enrichment.suggested_description
 //   purview.writebackPolicy.official_description: human_approval_required
 // =============================================================================
 
