@@ -86,87 +86,41 @@ Data Map > Collections > Root Collection > Role Assignments > Add "Data Curator"
 
 ---
 
-## Manual Setup Steps (once per environment)
+## Setup Steps (once per environment)
 
 ### 1. Provision the Purview Account
 
 Purview accounts are provisioned via the Azure Portal or organizational governance workflows — not via Bicep. The account carries organizational policies and cannot be tied to the application lifecycle.
 
-### 2. Create the Business Metadata Type
+### 2. Deploy Diagnostic Settings (automated via Bicep)
 
-Via Purview REST API:
+Diagnostic Settings are now deployed automatically by the `purview/main.bicep` module when `deployPurview=true` and `deployEventHub=true`. The module creates a `Microsoft.Insights/diagnosticSettings` resource scoped to the Purview account:
+
+- **Category**: `ScanStatusLogEvent`
+- **Destination**: Event Hub `purview-diagnostics` via `DiagnosticsSendRule` (SAS — required by Azure platform limitation)
+
+No manual portal configuration is needed.
+
+### 3. Run the Bootstrap Script (Business Metadata + RBAC)
+
+The bootstrap script automates Business Metadata Type creation and Data Curator RBAC assignment:
 
 ```bash
-TOKEN=$(az account get-access-token --resource "https://purview.azure.net" --query accessToken -o tsv)
-
-curl -X PUT \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  "https://<purviewAccountName>.purview.azure.com/datamap/api/atlas/v2/types/typedefs" \
-  -d '{
-  "businessMetadataDefs": [
-    {
-      "category": "BUSINESS_METADATA",
-      "name": "AI_Enrichment",
-      "description": "AI-generated metadata enrichment. Review_status indicates approval state: PENDING = awaiting human review, APPROVED/REJECTED = steward decision recorded.",
-      "typeVersion": "1.0",
-      "attributeDefs": [
-        {
-          "name": "suggested_description",
-          "typeName": "string",
-          "isOptional": true,
-          "cardinality": "SINGLE",
-          "valuesMinCount": 0,
-          "valuesMaxCount": 1,
-          "isUnique": false,
-          "isIndexable": true,
-          "includeInNotification": false,
-          "options": { "applicableEntityTypes": "[\"DataSet\"]", "maxStrLength": "5000" }
-        },
-        {
-          "name": "confidence_score",
-          "typeName": "float",
-          "isOptional": true,
-          "cardinality": "SINGLE",
-          "valuesMinCount": 0,
-          "valuesMaxCount": 1,
-          "isUnique": false,
-          "isIndexable": false,
-          "includeInNotification": false,
-          "options": { "applicableEntityTypes": "[\"DataSet\"]" }
-        },
-        {
-          "name": "review_status",
-          "typeName": "string",
-          "isOptional": true,
-          "cardinality": "SINGLE",
-          "valuesMinCount": 0,
-          "valuesMaxCount": 1,
-          "isUnique": false,
-          "isIndexable": true,
-          "includeInNotification": false,
-          "options": { "applicableEntityTypes": "[\"DataSet\"]", "maxStrLength": "50" }
-        }
-      ]
-    }
-  ]
-}'
+./scripts/bootstrap-purview.sh \
+  --purview-account purview-ai-metadata-dev \
+  --orchestrator-principal-id $(az containerapp show -n <name> -g <rg> --query identity.principalId -o tsv) \
+  --bridge-principal-id $(az functionapp identity show -n <name> -g <rg> --query principalId -o tsv)
 ```
 
-### 3. Assign RBAC (Data Curator)
-
-See [RBAC Requirements](#rbac-requirements) above.
-
-### 4. Configure Diagnostic Settings
-
-In the Azure Portal, on the Purview account:
-
-Monitoring > Diagnostic Settings > Add diagnostic setting:
-- **Category**: `ScanStatusLogEvent`
-- **Destination**: Event Hub namespace (`{project}-{environment}-evhns`), hub `purview-diagnostics`
-- **Authorization rule**: `DiagnosticsSendRule` (SAS — required by Azure platform limitation)
+The script is **idempotent** — safe to run multiple times:
+- `PUT /types/typedefs` creates or updates the `AI_Enrichment` Business Metadata Type
+- Metadata Policy API adds principals to data-curator only if not already present
 
 This enables the event pipeline: Purview scan completion > Event Hub > Bridge Function > Service Bus > Orchestrator.
+
+### Manual Alternative
+
+If you prefer manual setup, see the [API Endpoints](#api-endpoints-used) section for the REST calls, and [RBAC Requirements](#rbac-requirements) for portal-based role assignment.
 
 ---
 
@@ -208,7 +162,6 @@ The function only **reads** from Purview — it never writes to Business Metadat
 
 ## Future Enhancements (Test/Prod)
 
-- **Bootstrap script**: Automate Business Metadata Type creation and RBAC assignment per environment
 - **Private Endpoints**: Secure Purview access via Private Endpoints
 - **Rate limiting**: Paginate review status polling for catalogs with many PENDING assets
 

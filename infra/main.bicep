@@ -323,6 +323,8 @@ module purview 'purview/main.bicep' = if (deployPurview) {
   scope: resourceGroup
   params: {
     purviewAccountName: purviewAccountName
+    eventHubAuthorizationRuleId: deployEventHub ? eventHub.outputs.diagnosticsSendRuleId : ''
+    eventHubName: 'purview-diagnostics'
   }
 }
 

@@ -73,6 +73,12 @@
 @description('Microsoft Purview account name (must be pre-provisioned)')
 param purviewAccountName string
 
+@description('Event Hub authorization rule resource ID for Diagnostic Settings (SAS Send). Required for diagnostic settings.')
+param eventHubAuthorizationRuleId string = ''
+
+@description('Event Hub name that receives Purview diagnostic signals')
+param eventHubName string = 'purview-diagnostics'
+
 // =============================================================================
 // EXISTING RESOURCE REFERENCE
 // =============================================================================
@@ -81,6 +87,30 @@ param purviewAccountName string
 
 resource purviewAccount 'Microsoft.Purview/accounts@2021-07-01' existing = {
   name: purviewAccountName
+}
+
+// =============================================================================
+// DIAGNOSTIC SETTINGS (Purview → Event Hub)
+// =============================================================================
+// Routes Purview scan-status signals to the Event Hub for downstream processing.
+// Only deployed when eventHubAuthorizationRuleId is provided (i.e., Event Hub exists).
+//
+// Azure Diagnostic Settings require a SAS authorization rule — Managed Identity
+// is not supported by the platform for this resource type.
+
+resource diagnosticSettings 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = if (!empty(eventHubAuthorizationRuleId)) {
+  name: 'purview-to-eventhub'
+  scope: purviewAccount
+  properties: {
+    eventHubAuthorizationRuleId: eventHubAuthorizationRuleId
+    eventHubName: eventHubName
+    logs: [
+      {
+        category: 'ScanStatusLogEvent'
+        enabled: true
+      }
+    ]
+  }
 }
 
 // =============================================================================
