@@ -159,4 +159,135 @@ az group delete --name rg-aime-dev --yes --no-wait
 
 ---
 
+## New Environment Deployment
+
+This section covers deploying AIME infrastructure to a new environment (test, staging, prod).
+
+### Prerequisites
+
+- Azure CLI 2.50.0+ installed and authenticated (`az login`)
+- Owner or Contributor role on the target subscription
+- Docker image built and pushed to ACR (for compute deployment)
+- Purview account provisioned (if using Purview integration)
+
+### Step 1: Create Parameter File
+
+Copy the template and fill in environment-specific values:
+
+```bash
+cp infra/parameters.template.bicepparam infra/parameters.<env>.bicepparam
+```
+
+Edit the new file and replace all `<PLACEHOLDER>` values. Refer to `parameters.dev.bicepparam` for a working example.
+
+Key values to configure:
+- `environment` — target environment name (e.g., `test`, `staging`, `prod`)
+- `location` — Azure region
+- `storageSku` — use `Standard_GRS` or `Standard_RAGRS` for production
+- `searchSku` — use `standard` or higher for production workloads
+- `containerImage` — full ACR image URI with correct tag
+- `alertEmail` — ops team email for Azure Monitor alerts
+
+### Step 2: Validate Template
+
+```bash
+az deployment sub validate \
+  --location <location> \
+  --template-file infra/main.bicep \
+  --parameters infra/parameters.<env>.bicepparam
+```
+
+Expected: `"provisioningState": "Succeeded"`
+
+### Step 3: Preview Changes (What-If)
+
+```bash
+az deployment sub what-if \
+  --location <location> \
+  --template-file infra/main.bicep \
+  --parameters infra/parameters.<env>.bicepparam
+```
+
+Review the output carefully. All resources should show as **Create** for a new environment.
+
+### Step 4: Deploy Infrastructure
+
+For a new environment, deploy incrementally in 2-3 passes to respect resource dependencies:
+
+**Pass 1 — Core resources** (disable compute and functions):
+
+Set `deployCompute = false`, `deployFunctions = false`, `deployRegistry = false` in your parameter file, then:
+
+```bash
+az deployment sub create \
+  --name aime-<env>-pass1 \
+  --location <location> \
+  --template-file infra/main.bicep \
+  --parameters infra/parameters.<env>.bicepparam
+```
+
+**Pass 2 — Compute + Functions** (enable all):
+
+Set `deployCompute = true`, `deployFunctions = true`, `deployRegistry = true`, then deploy again:
+
+```bash
+az deployment sub create \
+  --name aime-<env>-pass2 \
+  --location <location> \
+  --template-file infra/main.bicep \
+  --parameters infra/parameters.<env>.bicepparam
+```
+
+### Step 5: Bootstrap Purview
+
+Run the Purview bootstrap script to create custom types and configure policies:
+
+```bash
+bash scripts/bootstrap-purview.sh --environment <env>
+```
+
+This creates:
+- Custom type `AI_Enrichment` in Purview
+- Metadata policy assignments for Orchestrator and Bridge managed identities
+
+### Step 6: Validate Environment
+
+Run the environment validation script to verify all 29 infrastructure checks:
+
+```bash
+bash scripts/validate-environment.sh --environment <env> --verbose
+```
+
+All checks should PASS. Address any FAILures before going live.
+
+### Troubleshooting by Check ID
+
+| Check | Common Cause | Fix |
+|-------|-------------|-----|
+| RES-001 | Resource group not created | Verify subscription and location in parameter file |
+| RES-002 | Cosmos DB provisioning failed | Check region availability for serverless Cosmos |
+| RES-003 | Service Bus not found | Ensure `serviceBusSku` is `Standard` or `Premium` |
+| RES-004 | Event Hub NS missing | Verify `deployEventHub = true` |
+| RES-005 | Search service not found | Verify `deploySearch = true` and SKU availability |
+| RES-006 | OpenAI not provisioned | Check region supports Azure OpenAI; verify `deployOpenAI = true` |
+| RES-007 | ACR not found | Verify `deployRegistry = true` |
+| RES-008 | Container App missing | Deploy in Pass 2 with `deployCompute = true` |
+| RES-009 | Function App not running | Check Function App logs; verify `deployFunctions = true` |
+| RES-010 | Log Analytics missing | Verify `deployObservability = true` |
+| RES-011 | Purview not found | Purview must be provisioned separately; check `purviewAccountName` |
+| RBAC-001..002 | Cosmos RBAC missing | Re-run deployment — Cosmos data-plane roles are set in Bicep |
+| RBAC-003..008 | ARM role missing | Re-run deployment — role assignments are set in Bicep |
+| PV-001 | Custom type missing | Run `bootstrap-purview.sh` |
+| PV-002..003 | MI not in policy | Run `bootstrap-purview.sh`; verify managed identity principal IDs |
+| CFG-001 | Cosmos containers missing | Verify `deployCosmosContainers = true` and re-deploy |
+| CFG-002 | SB queues missing | Re-run deployment — queues are created in messaging module |
+| CFG-003 | Event Hub or consumer group missing | Re-run deployment — created in eventhub module |
+| CFG-004 | Diagnostic settings missing | Run `bootstrap-purview.sh` or configure manually |
+| CFG-005 | Search index missing | Set `deploySearchIndex = true` or create manually |
+| APP-001 | Container App env vars wrong | Check Bicep compute module env var definitions |
+| APP-002 | Function App settings wrong | Check Bicep functions module app settings |
+| APP-003 | Placeholder container image | Push real image to ACR and update `containerImage` parameter |
+
+---
+
 For more information, see [README.md](README.md).
