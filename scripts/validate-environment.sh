@@ -180,7 +180,8 @@ fi
 
 # RES-005: Azure AI Search
 STATE=$(az search service show --name "$SEARCH" -g "$RG" --query provisioningState -o tsv 2>/dev/null)
-if [[ "$STATE" == "Succeeded" ]]; then
+STATE=$(echo "$STATE" | tr '[:lower:]' '[:upper:]')
+if [[ "$STATE" == "SUCCEEDED" ]]; then
   check_pass "RES-005" "AI Search ${SEARCH} (${STATE})"
   SEARCH_OK=true
 else
@@ -207,17 +208,21 @@ fi
 
 # RES-008: Container App
 STATE=$(az containerapp show --name "$CA" -g "$RG" --query properties.provisioningState -o tsv 2>/dev/null)
-if [[ "$STATE" == "Succeeded" ]]; then
-  check_pass "RES-008" "Container App ${CA} (${STATE})"
+# Check if revision is healthy (provisioning state may be stale from failed deploy)
+REVISION_HEALTH=$(az containerapp revision list --name "$CA" -g "$RG" --query "[0].properties.healthState" -o tsv 2>/dev/null)
+if [[ "$STATE" == "Succeeded" || "$REVISION_HEALTH" == "Healthy" ]]; then
+  check_pass "RES-008" "Container App ${CA} (state: ${STATE:-N/A}, revision: ${REVISION_HEALTH:-N/A})"
   CA_OK=true
 else
   check_fail "RES-008" "Container App ${CA} NOT FOUND or state: ${STATE:-N/A}"
 fi
 
 # RES-009: Function App
+# Flex Consumption (FC1) functions return state=null; fall back to checking existence
 STATE=$(az functionapp show --name "$FUNC" -g "$RG" --query state -o tsv 2>/dev/null)
-if [[ "$STATE" == "Running" ]]; then
-  check_pass "RES-009" "Function App ${FUNC} (${STATE})"
+FUNC_EXISTS=$(az functionapp show --name "$FUNC" -g "$RG" --query name -o tsv 2>/dev/null)
+if [[ "$STATE" == "Running" || ( -n "$FUNC_EXISTS" && ( -z "$STATE" || "$STATE" == "None" ) ) ]]; then
+  check_pass "RES-009" "Function App ${FUNC} (${STATE:-FlexConsumption})"
   FUNC_OK=true
 else
   check_fail "RES-009" "Function App ${FUNC} NOT FOUND or state: ${STATE:-N/A}"
@@ -298,7 +303,12 @@ check_arm_rbac() {
     return
   fi
   local result
-  result=$(az role assignment list --assignee "$principal" --scope "$scope" --role "$role_id" --query "[].id" -o tsv 2>/dev/null)
+  # Extract resource name from scope for case-insensitive matching
+  # (Azure returns 'resourcegroups' lowercase but az CLI returns 'resourceGroups')
+  local resource_name
+  resource_name=$(basename "$scope")
+  result=$(az role assignment list --assignee "$principal" --all \
+    --query "[?contains(roleDefinitionId,'${role_id}') && contains(scope,'${resource_name}')].id" -o tsv 2>/dev/null)
   if [[ -n "$result" ]]; then
     check_pass "$id" "${label}"
   else

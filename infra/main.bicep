@@ -137,6 +137,9 @@ param deploySearchIndexers bool = false
 @description('Email address for Azure Monitor alert notifications')
 param alertEmail string = ''
 
+@description('Enable Cosmos DB free tier (only one free-tier account allowed per subscription)')
+param enableFreeTier bool = true
+
 @description('Event Hub namespace name. Required when deployFunctions=true and deployEventHub=false.')
 param eventHubNamespaceName string = ''
 
@@ -200,6 +203,7 @@ module cosmosAccountDb 'cosmos/account-db.bicep' = {
     databaseName: 'metadata_enricher'
     location: core.outputs.resourceLocation
     tags: core.outputs.resourceTags
+    enableFreeTier: enableFreeTier
   }
 }
 

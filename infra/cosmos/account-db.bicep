@@ -27,6 +27,9 @@ param tags object
 @description('Logical database name')
 param databaseName string = 'metadata_enricher'
 
+@description('Enable Cosmos DB free tier (only one free-tier account per subscription)')
+param enableFreeTier bool = true
+
 // =============================================================================
 // COSMOS DB ACCOUNT
 // =============================================================================
@@ -53,7 +56,7 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2023-11-15' = {
     ]
     publicNetworkAccess: 'Enabled'          // MVP: Public endpoints for Dev
     enableAutomaticFailover: false          // MVP: Disabled for Dev
-    enableFreeTier: true                    // Must match the existing account — immutable after creation
+    enableFreeTier: enableFreeTier           // Only one free-tier account per subscription
     // capabilities: EnableServerless — set at account creation time only.
     // Azure rejects any PUT that includes the capabilities array on an existing
     // serverless account ("Update of EnableServerless capability is not allowed").
