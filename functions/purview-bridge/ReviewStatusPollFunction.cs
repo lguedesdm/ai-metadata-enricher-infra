@@ -12,7 +12,7 @@ namespace PurviewBridge;
 /// Timer-triggered function that polls Purview for review_status changes on
 /// assets currently in PENDING state in Cosmos DB.
 ///
-/// Flow (every 5 minutes):
+/// Flow (every hour):
 ///   1. Query Cosmos state container for all lifecycle records with status "pending"
 ///   2. For each PENDING asset, GET the Purview entity and read
 ///      businessAttributes.AI_Enrichment.review_status
@@ -50,7 +50,7 @@ public class ReviewStatusPollFunction
     }
 
     [Function(nameof(ReviewStatusPollFunction))]
-    public async Task Run([TimerTrigger("0 */5 * * * *")] TimerInfo timer)
+    public async Task Run([TimerTrigger("0 0 * * * *")] TimerInfo timer)
     {
         var timestamp = DateTime.UtcNow;
         _logger.LogInformation("{ObsLog}", ObsLog("review_poll", "poll_started", null));
@@ -148,9 +148,9 @@ public class ReviewStatusPollFunction
                 // -------------------------------------------------------------- //
                 // 4a. Upsert lifecycle record with new status
                 // -------------------------------------------------------------- //
-                var updatedRecord = BuildUpdatedLifecycleRecord(record, newStatus, timestamp);
-                await stateContainer.UpsertItemAsync(
-                    updatedRecord,
+                using var updatedStream = BuildUpdatedLifecycleRecord(record, newStatus, timestamp);
+                await stateContainer.UpsertItemStreamAsync(
+                    updatedStream,
                     new PartitionKey(entityType));
 
                 // -------------------------------------------------------------- //
@@ -234,27 +234,39 @@ public class ReviewStatusPollFunction
     /// <summary>
     /// Clones the existing lifecycle record with the updated status and timestamp.
     /// Preserves all other fields (entityType, contentHash, sourceSystem, etc.).
+    /// Uses raw JSON manipulation to avoid type-mapping issues with Cosmos SDK.
     /// </summary>
-    private static Dictionary<string, object> BuildUpdatedLifecycleRecord(
+    private static System.IO.Stream BuildUpdatedLifecycleRecord(
         JsonElement original, string newStatus, DateTime updatedAt)
     {
-        var result = new Dictionary<string, object>();
-
-        foreach (var prop in original.EnumerateObject())
+        using var doc = JsonDocument.Parse(original.GetRawText());
+        var ms = new System.IO.MemoryStream();
+        using (var writer = new Utf8JsonWriter(ms, new JsonWriterOptions { SkipValidation = false }))
         {
-            if (prop.Name == "lifecycleStatus")
-                result["lifecycleStatus"] = newStatus;
-            else if (prop.Name == "updatedAt")
-                result["updatedAt"] = updatedAt.ToString("o");
-            else
-                result[prop.Name] = JsonSerializer.Deserialize<object>(prop.Value.GetRawText())!;
+            writer.WriteStartObject();
+            foreach (var prop in doc.RootElement.EnumerateObject())
+            {
+                // Skip Cosmos system properties — they are read-only
+                if (prop.Name.StartsWith("_"))
+                    continue;
+
+                if (prop.Name == "lifecycleStatus")
+                {
+                    writer.WriteString("lifecycleStatus", newStatus);
+                }
+                else if (prop.Name == "updatedAt")
+                {
+                    writer.WriteString("updatedAt", updatedAt.ToString("o"));
+                }
+                else
+                {
+                    prop.WriteTo(writer);
+                }
+            }
+            writer.WriteEndObject();
         }
-
-        // Ensure fields exist even if missing from original
-        result["lifecycleStatus"] = newStatus;
-        result["updatedAt"] = updatedAt.ToString("o");
-
-        return result;
+        ms.Position = 0;
+        return ms;
     }
 
     // ---------------------------------------------------------------------- //
