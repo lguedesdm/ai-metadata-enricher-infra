@@ -68,6 +68,18 @@ param uniqueSuffix string = ''
 @description('Microsoft Purview account name (e.g. purview-ai-metadata-dev). Used by UpstreamRouterFunction to query the Purview REST API.')
 param purviewAccountName string
 
+@description('Cosmos DB account endpoint (e.g. https://cosmos-ai-metadata-dev.documents.azure.com:443/). Used by ReviewStatusPollFunction.')
+param cosmosEndpoint string
+
+@description('Cosmos DB database name. Frozen: metadata_enricher.')
+param cosmosDatabaseName string = 'metadata_enricher'
+
+@description('Cosmos DB state container name. Frozen: state.')
+param cosmosStateContainer string = 'state'
+
+@description('Cosmos DB audit container name. Frozen: audit.')
+param cosmosAuditContainer string = 'audit'
+
 // =============================================================================
 // LOCAL VARIABLES
 // =============================================================================
@@ -265,6 +277,26 @@ resource bridgeFunctionApp 'Microsoft.Web/sites@2023-12-01' = {
         {
           name: 'EnrichmentRequestsQueueName'
           value: 'enrichment-requests'      // frozen: runtime_architecture_contract.yaml
+        }
+
+        // ------------------------------------------------------------------
+        // ReviewStatusPollFunction — Cosmos DB polling
+        // ------------------------------------------------------------------
+        {
+          name: 'CosmosEndpoint'
+          value: cosmosEndpoint
+        }
+        {
+          name: 'CosmosDatabaseName'
+          value: cosmosDatabaseName         // frozen: runtime_architecture_contract.yaml
+        }
+        {
+          name: 'CosmosStateContainer'
+          value: cosmosStateContainer       // frozen: runtime_architecture_contract.yaml
+        }
+        {
+          name: 'CosmosAuditContainer'
+          value: cosmosAuditContainer       // frozen: runtime_architecture_contract.yaml
         }
       ]
     }

@@ -38,6 +38,9 @@ param cosmosAccountName string = 'cosmos-ai-metadata-dev'
 @description('Principal ID of the Orchestrator Managed Identity (Container App). Leave empty to skip assignment.')
 param orchestratorPrincipalId string = ''
 
+@description('Principal ID of the Bridge Function App Managed Identity. Leave empty to skip assignment.')
+param bridgePrincipalId string = ''
+
 // =============================================================================
 // ROLE DEFINITION ID
 // =============================================================================
@@ -76,8 +79,28 @@ resource orchestratorDataContributorAssignment 'Microsoft.DocumentDB/databaseAcc
 }
 
 // =============================================================================
+// COSMOS DB DATA PLANE RBAC ASSIGNMENT — Bridge Function App → Data Contributor
+// =============================================================================
+// Grants the Purview Bridge Function App's Managed Identity the ability to
+// read and write lifecycle and audit documents in Cosmos DB.
+// Required by ReviewStatusPollFunction to sync review_status from Purview.
+
+resource bridgeDataContributorAssignment 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2023-11-15' = if (!empty(bridgePrincipalId)) {
+  parent: cosmosAccount
+  name: guid(cosmosAccount.id, bridgePrincipalId, cosmosBuiltInDataContributorRoleId)
+  properties: {
+    roleDefinitionId: '${cosmosAccount.id}/sqlRoleDefinitions/${cosmosBuiltInDataContributorRoleId}'
+    principalId: bridgePrincipalId
+    scope: cosmosAccount.id    // Account-level scope covers all databases and containers
+  }
+}
+
+// =============================================================================
 // OUTPUTS
 // =============================================================================
 
 @description('Role assignment resource ID (empty if skipped)')
 output orchestratorDataContributorAssignmentId string = !empty(orchestratorPrincipalId) ? orchestratorDataContributorAssignment.id : ''
+
+@description('Bridge role assignment resource ID (empty if skipped)')
+output bridgeDataContributorAssignmentId string = !empty(bridgePrincipalId) ? bridgeDataContributorAssignment.id : ''

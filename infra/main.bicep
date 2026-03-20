@@ -285,6 +285,7 @@ module functions 'functions/main.bicep' = if (deployFunctions) {
     eventHubNamespaceName: deployEventHub ? eventHub.outputs.eventHubNamespaceName : eventHubNamespaceName
     serviceBusNamespaceName: messaging.outputs.serviceBusNamespaceName
     purviewAccountName: purviewAccountName
+    cosmosEndpoint: cosmosAccountDb.outputs.cosmosEndpoint
   }
 }
 
@@ -480,6 +481,7 @@ module cosmosRbac 'cosmos/cosmos-rbac.bicep' = {
   params: {
     cosmosAccountName: cosmosAccountDb.outputs.cosmosAccountName
     orchestratorPrincipalId: deployCompute ? compute.outputs.managedIdentityPrincipalId : orchestratorPrincipalId
+    bridgePrincipalId: deployFunctions ? functions.outputs.managedIdentityPrincipalId : bridgePrincipalId
   }
 }
 

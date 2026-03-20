@@ -18,6 +18,8 @@
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.ServiceBus" Version="5.17.0" />
     <!-- Timer Trigger -->
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Timer" Version="4.3.1" />
+    <!-- Cosmos DB SDK (review status polling) -->
+    <PackageReference Include="Microsoft.Azure.Cosmos" Version="3.39.0" />
   </ItemGroup>
   <ItemGroup>
     <None Update="host.json">
