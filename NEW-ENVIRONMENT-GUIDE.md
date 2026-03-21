@@ -22,6 +22,93 @@ Complete step-by-step guide for deploying the AI Metadata Enricher (AIME) infras
 
 ---
 
+## Ownership Model: AIME vs Client
+
+AIME is a **plugin** that connects to the client's existing Purview. It does not replace or replicate any client infrastructure. Understanding this boundary is critical for deployment.
+
+### AIME Responsibility (our IaC creates and manages)
+
+| Resource | IaC Method | Purpose |
+|----------|-----------|---------|
+| Event Hub namespace + `purview-diagnostics` hub | Bicep (`eventhub/main.bicep`) | Receives scan events from client's Purview |
+| Bridge Function App (infra + code) | Bicep + `deploy-environment.sh` | Filters events, routes to Service Bus |
+| Service Bus + `enrichment-requests` + `purview-events` queues | Bicep (`messaging/main.bicep`) | Message pipeline between Bridge and Orchestrator |
+| Orchestrator Container App | Bicep (`compute/main.bicep`) + Docker | Enrichment engine (RAG + LLM + validation + writeback) |
+| AI Search + `metadata-context-index` + indexers | Bicep (`search/main.bicep`) | RAG knowledge base (Synergy/Zipline context) |
+| Azure OpenAI + GPT deployment | Bicep (`openai/main.bicep`) | LLM for generating suggested descriptions |
+| Cosmos DB + `state` + `audit` containers | Bicep (`cosmos/*.bicep`) | Pipeline state tracking and audit trail |
+| Container Registry | Bicep (`registry/main.bicep`) | Orchestrator container image storage |
+| Storage Account + blob containers | Bicep (`storage/main.bicep`) | RAG context documents (synergy, zipline, documentation, schemas) |
+| Log Analytics + Application Insights | Bicep (`observability/main.bicep`) | Telemetry and monitoring |
+| All RBAC (8 role assignments) | Bicep (`*-rbac.bicep`) | Managed Identity permissions between our resources |
+
+### Client Responsibility (exists before AIME deployment)
+
+| Resource | Owner | AIME Interaction |
+|----------|-------|-----------------|
+| **Purview account** | Client | AIME reads assets and writes `AI_Enrichment` business metadata |
+| **Data sources** (SQL databases, etc.) | Client | Purview scans these; AIME never touches them directly |
+| **Purview scans + schedules** | Client | Already running; generate the events that trigger AIME |
+| **Synergy/Zipline data dictionaries** | Client provides | Uploaded to our blob storage as RAG context |
+
+### Integration Points (our scripts configure on client's Purview)
+
+These require **client admin permission** to execute:
+
+| Configuration | Script | What It Does |
+|--------------|--------|-------------|
+| Diagnostic Settings | Bicep (`purview/main.bicep`, `deployPurview=true`) | Routes Purview scan events to our Event Hub |
+| `AI_Enrichment` Business Metadata type | `bootstrap-purview.sh` Part A | Creates the custom type for suggested descriptions |
+| Data Curator RBAC | `bootstrap-purview.sh` Part B | Adds our Orchestrator + Bridge MIs to Purview policies |
+
+### Data Flow
+
+```
+CLIENT's Purview (scans their databases)
+  | Diagnostic Settings (configured by our IaC)
+  v
+OUR Event Hub (purview-diagnostics)
+  |
+  v
+OUR Bridge Function (filters + routes)
+  |
+  v
+OUR Service Bus (enrichment-requests)
+  |
+  v
+OUR Orchestrator
+  |-- reads asset from CLIENT's Purview
+  |-- queries OUR AI Search (RAG context from Synergy/Zipline docs)
+  |-- calls OUR Azure OpenAI (LLM enrichment)
+  |-- validates output (16 rules)
+  |-- writes AI_Enrichment to CLIENT's Purview
+  +-- persists state + audit to OUR Cosmos DB
+```
+
+**Key distinction:** Synergy and Zipline are **context sources for RAG**, not Purview data sources. Their data dictionaries live in our blob storage and are indexed in our AI Search. The client's Purview scans whatever databases the client has — AIME enriches whatever assets those scans discover.
+
+### FAQ: What needs to be configured on the client side, outside of our IaC?
+
+**Q: Our IaC deploys the full AIME infrastructure. But what does the client need to do on their side for the system to work?**
+
+**A:** Three things, all on their Purview account:
+
+| # | What | Who Does It | How | Why |
+|---|------|-------------|-----|-----|
+| 1 | **Grant Collection Admin** to the person running the AIME deploy | Client's Purview Admin | Purview Portal → Collections → Role assignments | Without this, `bootstrap-purview.sh` cannot create the AI_Enrichment type or assign Data Curator roles |
+| 2 | **Approve Diagnostic Settings** on their Purview account | Client's Purview Admin | Already automated by our Bicep (`deployPurview=true`), but client must authorize the deployment principal to configure diagnostics on their Purview resource | Without this, scan events don't reach our Event Hub and the pipeline never triggers |
+| 3 | **Provide RAG context documents** (Synergy/Zipline data dictionaries, business glossaries, schema documentation) | Client's Data Team | Deliver files; we upload to our blob storage and index in AI Search | Without context, the LLM has no grounding and will produce low-confidence descriptions that get blocked by validation rule V040 |
+
+Everything else — the `AI_Enrichment` type creation, the Data Curator RBAC, the Diagnostic Settings configuration — is executed by our scripts against their Purview. The client doesn't need to manually configure anything in Purview beyond granting us initial access.
+
+**The client does NOT need to:**
+- Change their existing Purview scans or schedules
+- Modify their database permissions (AIME never connects to their databases)
+- Install anything on their infrastructure
+- Create any Azure resources
+
+---
+
 ## Step 1: Create Parameter File
 
 ```bash
