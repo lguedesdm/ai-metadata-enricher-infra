@@ -3,7 +3,7 @@
 // =============================================================================
 // Scope: Resource Group
 // Containers:
-// - state  (TTL: 7 days  = 604800 s)
+// - state  (TTL: 60 days = 5184000 s)
 // - audit  (TTL: 180 days = 15552000 s)
 // Partition key: /entityType
 // Inherit shared throughput from database (no container throughput)
@@ -38,7 +38,7 @@ resource stateContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/cont
         paths: [partitionKeyPath]
         kind: 'Hash'
       }
-      defaultTtl: 604800    // 7 days — state documents expire after one enrichment cycle window
+      defaultTtl: 5184000   // 60 days — state documents expire after enrichment cycle window
     }
   }
 }
