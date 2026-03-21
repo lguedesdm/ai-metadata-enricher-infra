@@ -107,18 +107,37 @@ TYPEDEF_BODY='{
   ]
 }'
 
-HTTP_CODE=$(curl -s -o /tmp/purview-typedef-response.json -w "%{http_code}" \
-  -X PUT \
+# Try POST first (for new accounts), fall back to PUT (for existing types)
+RESPONSE=$(curl -s -w "\n%{http_code}" \
+  -X POST \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   "${PURVIEW_ENDPOINT}/datamap/api/atlas/v2/types/typedefs" \
   -d "$TYPEDEF_BODY")
+HTTP_CODE=$(echo "$RESPONSE" | tail -1)
 
 if [[ "$HTTP_CODE" -eq 200 ]]; then
-  echo "OK: AI_Enrichment Business Metadata Type created/updated (HTTP $HTTP_CODE)"
+  echo "OK: AI_Enrichment Business Metadata Type created (HTTP $HTTP_CODE)"
+elif [[ "$HTTP_CODE" -eq 409 ]]; then
+  # Type already exists — update via PUT
+  echo "Type exists, updating via PUT..."
+  RESPONSE=$(curl -s -w "\n%{http_code}" \
+    -X PUT \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    "${PURVIEW_ENDPOINT}/datamap/api/atlas/v2/types/typedefs" \
+    -d "$TYPEDEF_BODY")
+  HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+  if [[ "$HTTP_CODE" -eq 200 ]]; then
+    echo "OK: AI_Enrichment Business Metadata Type updated (HTTP $HTTP_CODE)"
+  else
+    echo "ERROR: Failed to update AI_Enrichment (HTTP $HTTP_CODE)" >&2
+    echo "$RESPONSE" | sed '$d' >&2
+    exit 1
+  fi
 else
-  echo "ERROR: Failed to create/update AI_Enrichment (HTTP $HTTP_CODE)" >&2
-  cat /tmp/purview-typedef-response.json >&2
+  echo "ERROR: Failed to create AI_Enrichment (HTTP $HTTP_CODE)" >&2
+  echo "$RESPONSE" | sed '$d' >&2
   exit 1
 fi
 

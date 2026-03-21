@@ -288,6 +288,41 @@ bash scripts/bootstrap-purview.sh \
 
 If the bootstrap script fails on Part A (expected for new accounts), run Part A manually (POST above) then re-run the script.
 
+### Part C: Register Data Sources and Configure Scans
+
+Register data sources (Storage, SQL) and configure scans:
+
+```bash
+cd ai-metadata-enricher-infra
+
+# Storage account source (auto-assigns Purview MI RBAC)
+bash scripts/setup-purview-sources.sh \
+  --purview-account purview-ai-metadata-<ENV> \
+  --environment <ENV> \
+  --subscription-id <SUB_ID> \
+  --resource-group rg-ai-metadata-<ENV> \
+  --storage-account <STORAGE_ACCOUNT_NAME> \
+  --trigger-scan \
+  --verbose
+
+# SQL database source (requires SQL server + database to exist)
+bash scripts/setup-purview-sources.sh \
+  --purview-account purview-ai-metadata-<ENV> \
+  --environment <ENV> \
+  --subscription-id <SUB_ID> \
+  --resource-group rg-ai-metadata-<ENV> \
+  --sql-server <SQL_SERVER_NAME> \
+  --sql-database <SQL_DATABASE_NAME> \
+  --trigger-scan \
+  --verbose
+```
+
+**Prerequisites for SQL scan:** The Purview system MI must have `db_datareader` on the target SQL database. Grant it via:
+```sql
+CREATE USER [purview-ai-metadata-<ENV>] FROM EXTERNAL PROVIDER;
+ALTER ROLE db_datareader ADD MEMBER [purview-ai-metadata-<ENV>];
+```
+
 ---
 
 ## Step 9: Upload Test Data to Blob Storage
@@ -402,35 +437,109 @@ Expected output: `RESULT: ALL CHECKS PASSED`
 
 ---
 
+## Automated Deployment (Single Command)
+
+For environments with an existing parameter file, use the master deployment script:
+
+```bash
+cd ai-metadata-enricher-infra
+
+bash scripts/deploy-environment.sh \
+  --environment <ENV> \
+  --subscription-id <SUB_ID> \
+  --app-repo-path ../ai-metadata-enricher \
+  --verbose
+```
+
+This script orchestrates all 9 phases automatically:
+1. Pre-flight checks (az, docker, params)
+2. Bicep Pass 1 (core resources)
+3. Purview account creation (with wait loop)
+4. Docker image build + push to ACR
+5. Bicep Pass 2 (compute + functions + purview)
+6. Bridge Function deploy (zip deployment)
+7. Purview bootstrap (AI_Enrichment type + Data Curator RBAC)
+8. Purview source registration + scan trigger
+9. Environment validation (30 checks)
+
+**Guardrails:** Prompts for confirmation on `prod`/`production`. Never deletes. Idempotent (safe to re-run). Auto-retries Container App AcrPull failure.
+
+**Tested:** Successfully deployed prod from zero in ~13 minutes, achieving 30/30 validation checks.
+
+---
+
+## What IaC Creates vs What It Cannot
+
+### Fully Automated via Bicep (ARM)
+
+All 22 Azure resources, 8 RBAC role assignments, diagnostic settings, container configuration, and function app settings.
+
+### Automated via Scripts (NOT possible via Bicep/ARM)
+
+These items use Azure data-plane APIs that ARM/Bicep cannot access:
+
+| Item | Script | API Used | Why Not Bicep |
+|------|--------|----------|---------------|
+| Purview account creation | `deploy-environment.sh` Phase 3 | `az purview account create` | Could be Bicep, but kept separate for governance control |
+| AI_Enrichment Business Metadata type | `bootstrap-purview.sh` | Atlas v2 REST API (POST) | Purview data-plane only |
+| Data Curator collection RBAC | `bootstrap-purview.sh` | Metadata Policy REST API | Purview collection RBAC, not ARM RBAC |
+| Purview source registration | `setup-purview-sources.sh` | Scan Management REST API | Purview data-plane only |
+| Purview scan configuration | `setup-purview-sources.sh` | Scan Management REST API | Purview data-plane only |
+| Container image build + push | `deploy-environment.sh` Phase 4 | Docker CLI + `az acr` | Requires local Docker daemon |
+| Bridge Function code deploy | `deploy-environment.sh` Phase 6 | `az functionapp deployment` | Code packaging is not ARM |
+
+### Truly Manual (cannot be automated)
+
+| Item | Why | When Needed |
+|------|-----|-------------|
+| Purge soft-deleted OpenAI account | Required when re-creating in same subscription after deletion | Only on re-deploy after destroy |
+| SQL Server `db_datareader` for Purview MI | Requires SQL admin access to target database | Only when adding SQL scan source |
+| Purview scan schedule | Not yet implemented in scripts | Configure via portal or extend `setup-purview-sources.sh` |
+| Search index context documents | Application-specific data, not infrastructure | Upload via admin key or indexer |
+
+---
+
 ## Known Issues and Lessons Learned
 
 ### 1. Cosmos Free Tier (one per subscription)
 **Problem:** `enableFreeTier: true` fails if another account already uses free tier.
-**Fix:** Set `enableFreeTier = false` in parameters. The `enableFreeTier` parameter was added to `cosmos/account-db.bicep` and piped through `main.bicep`.
+**Fix:** Set `enableFreeTier = false` in parameters.
 
 ### 2. Container App AcrPull Chicken-and-Egg
-**Problem:** Container App needs AcrPull RBAC to pull image, but RBAC is assigned using the CA's managed identity (which only exists after CA is created).
-**Fix:** Deploy twice. First deploy creates CA (may fail image pull) + assigns RBAC. Second deploy succeeds because RBAC is already in place. Alternatively, assign AcrPull manually after Pass 1.
+**Problem:** Container App needs AcrPull RBAC to pull image, but RBAC is assigned after CA creation.
+**Fix:** `deploy-environment.sh` automatically assigns AcrPull via REST API and retries the Bicep deploy. Expect 2 Bicep passes on first deploy.
 
 ### 3. Azure CLI `az role assignment create` MissingSubscription
 **Problem:** In some environments, `az role assignment create` fails with `MissingSubscription`.
-**Fix:** Use `az rest --method put` with the full ARM URL instead.
+**Fix:** All scripts use `az rest --method put` with full ARM URL instead.
 
 ### 4. Purview Type Creation (POST vs PUT)
-**Problem:** Bootstrap script uses PUT for type creation, which fails with 404 on new Purview accounts.
-**Fix:** Use POST for new types, PUT for updates.
+**Problem:** PUT fails with 404 on new Purview accounts.
+**Fix:** `bootstrap-purview.sh` now tries POST first, falls back to PUT for updates.
 
-### 5. Search Indexers (0 items)
-**Problem:** Indexers may run before blobs are uploaded, resulting in 0 items indexed.
-**Fix:** Trigger indexer re-run after uploading data, or push documents directly via the Search REST API.
+### 5. OpenAI Soft-Delete on Re-deploy
+**Problem:** After deleting and re-creating an environment in the same subscription, Azure OpenAI account creation fails because the old account is soft-deleted.
+**Fix:** Purge before re-deploy: `az cognitiveservices account purge --name oai-ai-metadata-<ENV> --resource-group rg-ai-metadata-<ENV> --location eastus`
 
-### 6. Function App State (Flex Consumption)
-**Problem:** `az functionapp show --query state` returns `None` for Flex Consumption (FC1) plans.
-**Fix:** Check existence via `--query name` instead of state.
+### 6. Search Indexers (0 items)
+**Problem:** Indexers run before blobs are uploaded, resulting in 0 items indexed.
+**Fix:** Upload data first, then trigger indexer, or push documents directly via Search REST API.
 
-### 7. Search provisioningState Case
-**Problem:** `az search service show` returns `succeeded` (lowercase), not `Succeeded`.
+### 7. Function App State (Flex Consumption)
+**Problem:** `az functionapp show --query state` returns `None` for FC1 plans.
+**Fix:** Validation script checks existence via `--query name` instead.
+
+### 8. Search provisioningState Case
+**Problem:** `az search service show` returns `succeeded` (lowercase).
 **Fix:** Case-insensitive comparison in validation scripts.
+
+### 9. RBAC Scope Case Sensitivity
+**Problem:** Azure returns `resourcegroups` (lowercase) in role assignments but `resourceGroups` (mixed) in resource IDs.
+**Fix:** Validation script uses `contains()` with resource name instead of exact scope match.
+
+### 10. Bridge Function Zip Format (Flex Consumption)
+**Problem:** Flex Consumption requires `.azurefunctions/` directory at zip root level.
+**Fix:** `deploy-environment.sh` builds the zip from `publish_v3/` which includes this directory.
 
 ---
 
