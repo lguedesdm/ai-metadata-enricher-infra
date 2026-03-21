@@ -12,16 +12,15 @@ namespace PurviewBridge;
 
 /// <summary>
 /// Upstream router: consumes ScanStatusLogEvents from the purview-events queue
-/// and fans out one enrichment-request message per Purview table entity.
+/// and fans out one enrichment-request message per enrichable Purview asset.
 ///
 /// Pipeline role:
 ///   purview-events (SB trigger)
-///     → resolve DB name from DataSourceName field (primary)
+///     → resolve data source name from DataSourceName field (primary)
 ///       or scanName regex (fallback for compatibility)
-///     → Purview Search → DB GUID
-///     → DB entity → schema GUIDs (single GET)
-///     → bulk schema GET → table GUIDs + names (single bulk call)
-///     → enrichment-requests (one message per table)
+///     → Purview Search API → all assets matching data source
+///     → filter out container/parent entity types
+///     → enrichment-requests (one message per leaf asset)
 ///
 /// Auth: DefaultAzureCredential (Bridge Managed Identity).
 ///   Service Bus trigger/sender : ServiceBusConnection__fullyQualifiedNamespace
@@ -29,8 +28,6 @@ namespace PurviewBridge;
 ///
 /// Throttling: Purview Atlas API baseline is 250 ops/sec (25 × 10 capacity units).
 ///   HTTP 429 is handled with exponential backoff (up to MaxRetries attempts).
-///   Bulk entity fetch (/entity/bulk) is used to keep round trips to O(1)
-///   regardless of schema count.
 ///
 /// App settings consumed:
 ///   PurviewAccountName              e.g. purview-ai-metadata-dev
@@ -66,6 +63,20 @@ public class UpstreamRouterFunction
     private static readonly Regex ScanNameRegex =
         new(@"lineage_for_(.+?)_[A-F0-9]{8,}", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    /// <summary>
+    /// Container/parent entity types that should NOT be sent for enrichment.
+    /// These are structural groupings, not leaf assets with meaningful metadata.
+    /// </summary>
+    private static readonly HashSet<string> ExcludedEntityTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "azure_sql_db",
+        "azure_sql_schema",
+        "azure_storage_account",
+        "azure_blob_service",
+        "azure_resource_group",
+        "azure_subscription"
+    };
+
     public UpstreamRouterFunction(ILogger<UpstreamRouterFunction> logger)
     {
         _logger = logger;
@@ -87,28 +98,28 @@ public class UpstreamRouterFunction
         _logger.LogInformation("{ObsLog}", ObsLog("router", "message_received", correlationId));
 
         // ------------------------------------------------------------------ //
-        // 1. Resolve DB name
+        // 1. Resolve data source name
         //    Primary  : DataSourceName field (stable, documented by Microsoft)
         //    Fallback : regex on scanName (custom format, not guaranteed)
         // ------------------------------------------------------------------ //
-        string dbName;
+        string dataSourceName;
         try
         {
-            dbName = ResolveDbName(body);
+            dataSourceName = ResolveDataSourceName(body);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "{ObsLog}", ObsLog("router", "db_name_resolution_failed", correlationId));
+            _logger.LogError(ex, "{ObsLog}", ObsLog("router", "datasource_name_resolution_failed", correlationId));
             return;
         }
 
-        if (string.IsNullOrEmpty(dbName))
+        if (string.IsNullOrEmpty(dataSourceName))
         {
-            _logger.LogWarning("{ObsLog}", ObsLog("router", "db_name_unresolved_skipped", correlationId));
+            _logger.LogWarning("{ObsLog}", ObsLog("router", "datasource_name_unresolved_skipped", correlationId));
             return;
         }
 
-        _logger.LogInformation("Resolved DB name: {DbName}", dbName);
+        _logger.LogInformation("Resolved data source name: {DataSourceName}", dataSourceName);
 
         // ------------------------------------------------------------------ //
         // 2. Acquire a Purview bearer token via Bridge Managed Identity
@@ -123,68 +134,52 @@ public class UpstreamRouterFunction
         var baseUrl = $"https://{purviewAccount}.purview.azure.com/datamap/api";
 
         // ------------------------------------------------------------------ //
-        // 3. Search Purview for the azure_sql_db entity matching dbName
+        // 3. Search Purview for ALL assets matching dataSourceName
         // ------------------------------------------------------------------ //
-        var dbGuid = await SearchEntityGuid(baseUrl, tokenResult.Token, dbName);
-        if (dbGuid is null)
+        var allAssets = await SearchAssetsByDataSource(baseUrl, tokenResult.Token, dataSourceName);
+
+        // ------------------------------------------------------------------ //
+        // 4. Filter out container/parent types — keep only leaf assets
+        // ------------------------------------------------------------------ //
+        var enrichableAssets = allAssets
+            .Where(a => !ExcludedEntityTypes.Contains(a.EntityType))
+            .ToList();
+
+        _logger.LogInformation(
+            "Search returned {Total} assets, {Enrichable} enrichable after filtering for data source {DataSource}",
+            allAssets.Count, enrichableAssets.Count, dataSourceName);
+
+        if (enrichableAssets.Count == 0)
         {
-            _logger.LogWarning("{ObsLog}", ObsLog("router", "db_entity_not_found", correlationId));
+            _logger.LogWarning("{ObsLog}", ObsLog("router", "no_enrichable_assets_found_skipped", correlationId));
             return;
         }
-        _logger.LogInformation("Found DB entity GUID: {DbGuid}", dbGuid);
 
         // ------------------------------------------------------------------ //
-        // 4. Get DB entity → extract schema GUIDs (1 API call)
+        // 5. Send each enrichable asset to enrichment-requests queue
         // ------------------------------------------------------------------ //
-        var schemaRefs = await GetRelationshipRefs(baseUrl, tokenResult.Token, dbGuid, "schemas");
-        if (schemaRefs.Count == 0)
-        {
-            _logger.LogWarning("{ObsLog}", ObsLog("router", "no_schemas_found_skipped", correlationId));
-            return;
-        }
-
-        // ------------------------------------------------------------------ //
-        // 5. Bulk-fetch all schema entities in a single call → extract tables
-        //    Uses /entity/bulk?guid=...&guid=... to avoid N sequential GETs.
-        //    Purview Atlas API baseline: 250 ops/sec (25 × 10 capacity units).
-        //    HTTP 429 is retried with exponential backoff.
-        // ------------------------------------------------------------------ //
-        var schemaGuids = schemaRefs.Select(r => r.Guid).ToList();
-        var schemaEntities = await BulkGetEntities(baseUrl, tokenResult.Token, schemaGuids);
-
         EnsureSender();
-        var tableMessages = new List<ServiceBusMessage>();
+        var outMessages = new List<ServiceBusMessage>();
 
-        foreach (var schemaEntity in schemaEntities)
+        foreach (var asset in enrichableAssets)
         {
-            var tableRefs = ExtractRelationshipRefs(schemaEntity, "tables");
-            foreach (var (tableGuid, tableName) in tableRefs)
+            var payload = JsonSerializer.Serialize(new
             {
-                var payload = JsonSerializer.Serialize(new
-                {
-                    id           = tableGuid,
-                    entityType   = "azure_sql_table",
-                    entityName   = tableName,
-                    sourceSystem = "purview"
-                });
+                id           = asset.Guid,
+                entityType   = asset.EntityType,
+                entityName   = asset.Name,
+                sourceSystem = "purview"
+            });
 
-                var outgoing = new ServiceBusMessage(Encoding.UTF8.GetBytes(payload));
-                outgoing.ApplicationProperties["correlationId"] = correlationId;
-                tableMessages.Add(outgoing);
+            var outgoing = new ServiceBusMessage(Encoding.UTF8.GetBytes(payload));
+            outgoing.ApplicationProperties["correlationId"] = correlationId;
+            outMessages.Add(outgoing);
 
-                _logger.LogInformation("{ObsLog}", ObsLog("router", "enrichment_request_queued", correlationId, tableGuid));
-            }
+            _logger.LogInformation("{ObsLog}", ObsLog("router", "enrichment_request_queued", correlationId, asset.Guid));
         }
 
-        if (tableMessages.Count > 0)
-        {
-            await _sender!.SendMessagesAsync(tableMessages);
-            _logger.LogInformation("{ObsLog}", ObsLog("router", "enrichment_requests_sent", correlationId));
-        }
-        else
-        {
-            _logger.LogWarning("{ObsLog}", ObsLog("router", "no_tables_found_skipped", correlationId));
-        }
+        await _sender!.SendMessagesAsync(outMessages);
+        _logger.LogInformation("{ObsLog}", ObsLog("router", "enrichment_requests_sent", correlationId));
     }
 
     private static string ObsLog(string stage, string evt, string correlationId, string? assetId = null) =>
@@ -198,7 +193,7 @@ public class UpstreamRouterFunction
         });
 
     // ---------------------------------------------------------------------- //
-    // DB NAME RESOLUTION
+    // DATA SOURCE NAME RESOLUTION
     // ---------------------------------------------------------------------- //
 
     // Regex to detect hashed/opaque DataSourceName values produced by lineage scans.
@@ -208,7 +203,7 @@ public class UpstreamRouterFunction
         new(@"^(lineage_)?[A-F0-9]{32,}$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>
-    /// Resolves the database name from the incoming Service Bus message.
+    /// Resolves the data source name from the incoming Service Bus message.
     ///
     /// Azure Monitor wraps diagnostic log records in a "records" array when
     /// forwarding to Event Hub. Each record may nest its fields inside a
@@ -223,7 +218,7 @@ public class UpstreamRouterFunction
     ///   3. scanName / ScanName regex   — fallback for custom-named scans
     ///      (extracts DB name from "lineage_for_{dbName}_{hex}" pattern)
     /// </summary>
-    private string ResolveDbName(string message)
+    private string ResolveDataSourceName(string message)
     {
         using var doc = JsonDocument.Parse(message);
         var root = doc.RootElement;
@@ -261,7 +256,7 @@ public class UpstreamRouterFunction
                             continue;
                         }
 
-                        _logger.LogInformation("DB name resolved via {Field}: {DbName}", fieldName, dsn);
+                        _logger.LogInformation("Data source name resolved via {Field}: {Name}", fieldName, dsn);
                         return dsn;
                     }
                 }
@@ -282,10 +277,10 @@ public class UpstreamRouterFunction
                     var match = ScanNameRegex.Match(scanName);
                     if (match.Success)
                     {
-                        var dbName = match.Groups[1].Value;
+                        var name = match.Groups[1].Value;
                         _logger.LogInformation(
-                            "DB name resolved via scanName regex (lineage extract): {DbName}", dbName);
-                        return dbName;
+                            "Data source name resolved via scanName regex (lineage extract): {Name}", name);
+                        return name;
                     }
                 }
             }
@@ -297,7 +292,7 @@ public class UpstreamRouterFunction
             if (target.TryGetProperty("dataSourceType", out var dstProp))
             {
                 _logger.LogWarning(
-                    "DB name unresolved for event type {EventType} — skipping",
+                    "Data source name unresolved for event type {EventType} — skipping",
                     dstProp.GetString());
                 break;
             }
@@ -307,109 +302,72 @@ public class UpstreamRouterFunction
     }
 
     // ---------------------------------------------------------------------- //
-    // PURVIEW API HELPERS
+    // PURVIEW SEARCH API
     // ---------------------------------------------------------------------- //
 
     /// <summary>
-    /// POST to Purview Search for a single azure_sql_db entity and return its GUID.
+    /// Lightweight DTO for assets returned by the Purview Search API.
     /// </summary>
-    private async Task<string?> SearchEntityGuid(string baseUrl, string token, string dbName)
-    {
-        var body = JsonSerializer.Serialize(new
-        {
-            keywords = dbName,
-            filter   = new { entityType = "azure_sql_db" }
-        });
-
-        using var resp = await SendWithRetry(() =>
-        {
-            var req = new HttpRequestMessage(
-                HttpMethod.Post,
-                $"{baseUrl}/search/query?api-version=2023-09-01")
-            {
-                Content = new StringContent(body, Encoding.UTF8, "application/json")
-            };
-            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-            return req;
-        });
-
-        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
-        if (doc.RootElement.TryGetProperty("value", out var arr) && arr.GetArrayLength() > 0)
-            return arr[0].TryGetProperty("id", out var id) ? id.GetString() : null;
-
-        return null;
-    }
+    private sealed record AssetRef(string Guid, string EntityType, string Name);
 
     /// <summary>
-    /// GET /atlas/v2/entity/guid/{guid} and return (guid, displayText) pairs
-    /// from the named relationship attribute (e.g. "schemas").
-    /// </summary>
-    private async Task<List<(string Guid, string Name)>> GetRelationshipRefs(
-        string baseUrl, string token, string guid, string relationship)
-    {
-        using var resp = await SendWithRetry(() =>
-        {
-            var req = new HttpRequestMessage(HttpMethod.Get, $"{baseUrl}/atlas/v2/entity/guid/{guid}");
-            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-            return req;
-        });
-
-        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
-        if (!doc.RootElement.TryGetProperty("entity", out var entity)) return [];
-
-        return ExtractRelationshipRefs(entity, relationship);
-    }
-
-    /// <summary>
-    /// Bulk-fetch multiple entities in a single API call.
-    /// GET /atlas/v2/entity/bulk?guid={g1}&guid={g2}&...
-    /// Returns the "entities" array from the response.
+    /// Searches Purview for ALL assets whose qualifiedName or name matches the
+    /// given data source name. Uses paginated Search API calls.
     ///
-    /// Reduces N sequential GETs to 1 call — critical for catalogs with many schemas.
+    /// This replaces the old SQL-specific hierarchy walk (DB → Schemas → Tables)
+    /// with a single generic search that works for any asset type.
     /// </summary>
-    private async Task<List<JsonElement>> BulkGetEntities(
-        string baseUrl, string token, IReadOnlyList<string> guids)
+    private async Task<List<AssetRef>> SearchAssetsByDataSource(
+        string baseUrl, string token, string dataSourceName)
     {
-        var qs = string.Join("&", guids.Select(g => $"guid={Uri.EscapeDataString(g)}"));
+        var results = new List<AssetRef>();
+        int offset = 0;
+        const int pageSize = 100;
 
-        using var resp = await SendWithRetry(() =>
+        while (true)
         {
-            var req = new HttpRequestMessage(HttpMethod.Get, $"{baseUrl}/atlas/v2/entity/bulk?{qs}");
-            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-            return req;
-        });
+            var requestBody = JsonSerializer.Serialize(new
+            {
+                keywords = dataSourceName,
+                limit    = pageSize,
+                offset   = offset
+            });
 
-        var results = new List<JsonElement>();
+            using var resp = await SendWithRetry(() =>
+            {
+                var req = new HttpRequestMessage(
+                    HttpMethod.Post,
+                    $"{baseUrl}/search/query?api-version=2023-09-01")
+                {
+                    Content = new StringContent(requestBody, Encoding.UTF8, "application/json")
+                };
+                req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                return req;
+            });
 
-        // Parse into a persistent document (caller owns lifetime via the list)
-        var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
-        if (doc.RootElement.TryGetProperty("entities", out var entities))
-        {
-            foreach (var entity in entities.EnumerateArray())
-                results.Add(entity.Clone()); // Clone detaches from the document lifetime
-        }
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
 
-        return results;
-    }
+            if (!doc.RootElement.TryGetProperty("value", out var valueArr))
+                break;
 
-    /// <summary>
-    /// Extracts (guid, displayText) pairs from an entity element's
-    /// relationshipAttributes[relationship] array.
-    /// </summary>
-    private static List<(string Guid, string Name)> ExtractRelationshipRefs(
-        JsonElement entity, string relationship)
-    {
-        var results = new List<(string, string)>();
+            int count = 0;
+            foreach (var item in valueArr.EnumerateArray())
+            {
+                var guid       = item.TryGetProperty("id", out var idProp)         ? idProp.GetString() ?? ""       : "";
+                var entityType = item.TryGetProperty("entityType", out var etProp)  ? etProp.GetString() ?? ""       : "";
+                var name       = item.TryGetProperty("name", out var nProp)         ? nProp.GetString() ?? guid      : guid;
 
-        if (!entity.TryGetProperty("relationshipAttributes", out var relAttrs)) return results;
-        if (!relAttrs.TryGetProperty(relationship, out var items)) return results;
+                if (!string.IsNullOrEmpty(guid) && !string.IsNullOrEmpty(entityType))
+                    results.Add(new AssetRef(guid, entityType, name));
 
-        foreach (var item in items.EnumerateArray())
-        {
-            var itemGuid = item.TryGetProperty("guid", out var g) ? g.GetString() ?? "" : "";
-            var itemName = item.TryGetProperty("displayText", out var n) ? n.GetString() ?? itemGuid : itemGuid;
-            if (!string.IsNullOrEmpty(itemGuid))
-                results.Add((itemGuid, itemName));
+                count++;
+            }
+
+            // Last page — fewer results than page size means no more pages
+            if (count < pageSize)
+                break;
+
+            offset += pageSize;
         }
 
         return results;
