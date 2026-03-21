@@ -36,8 +36,8 @@ This checklist confirms all required components for the AI Metadata Enricher inf
 
 ### Cosmos DB Module (`infra/cosmos/main.bicep`)
 - [x] Creates Cosmos DB account (Serverless) with system-assigned Managed Identity
-- [x] Creates database: `enricher-db`
-- [x] Creates containers: `state` (TTL: 7 days), `audit` (TTL: 180 days)
+- [x] Creates database: `metadata_enricher`
+- [x] Creates containers: `state` (TTL: conditional), `audit` (TTL: 180 days)
 - [x] Configures partition key: `/entityType`
 - [x] Handles globally unique naming with `uniqueSuffix` parameter
 
@@ -131,19 +131,20 @@ This checklist confirms all required components for the AI Metadata Enricher inf
 - Documentation comprehensive and accurate
 
 ### What's Next (User Action Required)
-1. Deploy to Azure using `DEPLOYMENT.md` guide
-2. Manually create Azure AI Search index (post-deployment)
-3. Optionally configure Microsoft Purview custom attribute
-4. Plan and implement compute layer (future phase)
+1. Deploy to Azure using `deploy-environment.sh` (automated) or `DEPLOYMENT.md` (manual)
+2. Register client's SQL database as Purview data source (`setup-purview-sources.sh`)
+3. Configure scan schedule via Purview API (see NEW-ENVIRONMENT-GUIDE.md Step 8 Part C)
+4. Upload RAG context documents to blob storage
+5. Verify end-to-end flow with `e2e_prod_validation.py`
 
 ### Known Limitations
-- Azure AI Search index must be created manually (Bicep limitation)
-- Purview configuration must be done manually (separate service)
+- Scan schedule must be configured via API (not automated by scripts)
+- Client must grant `db_datareader` to Purview MI on their SQL database
 - Storage account and Cosmos DB names include auto-generated unique suffixes
 
 ---
 
-**Repository Version**: 1.0  
-**Completion Date**: January 19, 2026  
-**Bicep Version**: 0.39.26  
-**Target Environment**: Dev (Test/Prod ready but not created)
+**Repository Version**: 2.0
+**Last Updated**: March 21, 2026
+**Bicep Version**: 0.39.26
+**Target Environments**: Dev (deployed), Prod (deployed and validated)

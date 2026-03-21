@@ -75,13 +75,13 @@ Expected resources:
 
 The unified index is created by a deploymentScript that consumes a versioned JSON schema stored in-repo. Manual portal changes are not allowed.
 
-1. Place the frozen schema at: `infra/search/schemas/metadata-context-index-v1.json`
+1. Place the frozen schema at: `infra/search/schemas/metadata-context-index.json`
 2. Enable index deployment by setting `deploySearchIndex = true` in `infra/parameters.dev.bicepparam`
 3. Deploy again using the same command in step 5
 
 Notes:
 - The script calls the Azure Search REST API (`PUT /indexes/{name}`) with the JSON body
-- The index name is fixed: `metadata-context-index-v1`
+- The index name is fixed: `metadata-context-index`
 - The schema must include vector fields and a semantic configuration as defined in the frozen contract
 
 ### 8. Optional: Configure Purview
@@ -149,13 +149,40 @@ az group delete --name rg-aime-dev --yes --no-wait
 
 **Warning**: This will permanently delete all resources in the resource group.
 
+## Recommended: Automated Deployment
+
+For production deployments, use the automated script instead of manual steps:
+
+```bash
+cd ai-metadata-enricher-infra
+
+bash scripts/deploy-environment.sh \
+  --environment <ENV> \
+  --subscription-id <SUB_ID> \
+  --app-repo-path ../ai-metadata-enricher \
+  --verbose
+```
+
+This orchestrates all 9 phases (Bicep, Docker, Functions, Purview bootstrap, source registration, validation). See [NEW-ENVIRONMENT-GUIDE.md](NEW-ENVIRONMENT-GUIDE.md) for full details.
+
+## Post-Deployment: SQL Database Integration
+
+After infrastructure is deployed, connect the client's SQL database to complete the enrichment pipeline:
+
+1. **Client grants `db_datareader`** to the Purview MI on their SQL database
+2. **Register SQL data source** via `setup-purview-sources.sh --sql-server <name> --sql-database <db>`
+3. **Configure scan schedule** via Purview API (see NEW-ENVIRONMENT-GUIDE.md Step 8 Part C)
+4. **Verify:** Scan discovers tables → Event Hub → Functions → Service Bus → Orchestrator enriches
+
+Without this step, the pipeline infrastructure is deployed but has no assets to enrich.
+
 ## Next Steps
 
-1. **Confirm index creation** (name: `metadata-context-index-v1`)
-2. **Configure Purview** (optional)
-3. **Review resource configuration** in Azure Portal
-4. **Plan compute layer** deployment (Azure Container Apps)
-5. **Set up monitoring** (Application Insights, Log Analytics)
+1. **Confirm index creation** (name: `metadata-context-index`)
+2. **Register client SQL database** (see Post-Deployment above)
+3. **Configure scan schedule** (recommended: every 3-6 hours)
+4. **Upload RAG context** (Synergy/Zipline data dictionaries to blob storage)
+5. **Verify end-to-end** flow with `e2e_prod_validation.py`
 
 ---
 

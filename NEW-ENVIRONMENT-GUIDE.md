@@ -97,15 +97,15 @@ OUR Orchestrator
 |---|------|-------------|-----|-----|
 | 1 | **Grant Collection Admin** to the person running the AIME deploy | Client's Purview Admin | Purview Portal → Collections → Role assignments | Without this, `bootstrap-purview.sh` cannot create the AI_Enrichment type or assign Data Curator roles |
 | 2 | **Approve Diagnostic Settings** on their Purview account | Client's Purview Admin | Already automated by our Bicep (`deployPurview=true`), but client must authorize the deployment principal to configure diagnostics on their Purview resource | Without this, scan events don't reach our Event Hub and the pipeline never triggers |
-| 3 | **Provide RAG context documents** (Synergy/Zipline data dictionaries, business glossaries, schema documentation) | Client's Data Team | Deliver files; we upload to our blob storage and index in AI Search | Without context, the LLM has no grounding and will produce low-confidence descriptions that get blocked by validation rule V040 |
+| 3 | **Provide RAG context documents** (Synergy/Zipline data dictionaries, business glossaries, schema documentation) | Client's Data Team | Deliver files; we upload to our blob storage and index in AI Search | Without context, the LLM has no grounding and will produce low-confidence descriptions |
+| 4 | **Grant `db_datareader` to our Purview MI** on their SQL databases | Client's DBA | Run SQL: `CREATE USER [purview-ai-metadata-<ENV>] FROM EXTERNAL PROVIDER; ALTER ROLE db_datareader ADD MEMBER [purview-ai-metadata-<ENV>];` | Without this, Purview scan cannot read database metadata and will fail silently |
 
-Everything else — the `AI_Enrichment` type creation, the Data Curator RBAC, the Diagnostic Settings configuration — is executed by our scripts against their Purview. The client doesn't need to manually configure anything in Purview beyond granting us initial access.
+Everything else — the `AI_Enrichment` type creation, the Data Curator RBAC, the Diagnostic Settings configuration, the SQL data source registration and scan — is executed by our scripts against their Purview. The client doesn't need to manually configure anything in Purview beyond granting us initial access and SQL read permissions.
 
 **The client does NOT need to:**
 - Change their existing Purview scans or schedules
-- Modify their database permissions (AIME never connects to their databases)
 - Install anything on their infrastructure
-- Create any Azure resources
+- Create any Azure resources (except their own SQL databases and Purview, which they already have)
 
 ---
 
@@ -373,26 +373,30 @@ bash scripts/bootstrap-purview.sh \
   --bridge-principal-id $BRIDGE_MI
 ```
 
-If the bootstrap script fails on Part A (expected for new accounts), run Part A manually (POST above) then re-run the script.
+The bootstrap script handles POST (create) and PUT (update) automatically. It is idempotent and safe to re-run. If Part A fails for unexpected reasons, check that the deployment principal has Collection Admin on the Purview root collection.
 
 ### Part C: Register Data Sources and Configure Scans
 
-Register data sources (Storage, SQL) and configure scans:
+Register the client's SQL database as a data source in Purview and configure scans.
+
+**IMPORTANT:** The Storage account containers (synergy, zipline, documentation, schemas) are **RAG context sources only** — they should NOT be registered as Purview data sources. Only the client's SQL databases should be registered for scanning.
+
+**Prerequisites (must be completed BEFORE running the script):**
+
+1. The client's SQL Server and Database must already exist
+2. The Purview system MI must have `db_datareader` on the target SQL database:
+```sql
+-- Run this on the CLIENT's SQL database (requires SQL admin access)
+CREATE USER [purview-ai-metadata-<ENV>] FROM EXTERNAL PROVIDER;
+ALTER ROLE db_datareader ADD MEMBER [purview-ai-metadata-<ENV>];
+```
+3. The SQL Server firewall must allow Azure services (0.0.0.0 rule)
+
+**Register SQL data source and trigger first scan:**
 
 ```bash
 cd ai-metadata-enricher-infra
 
-# Storage account source (auto-assigns Purview MI RBAC)
-bash scripts/setup-purview-sources.sh \
-  --purview-account purview-ai-metadata-<ENV> \
-  --environment <ENV> \
-  --subscription-id <SUB_ID> \
-  --resource-group rg-ai-metadata-<ENV> \
-  --storage-account <STORAGE_ACCOUNT_NAME> \
-  --trigger-scan \
-  --verbose
-
-# SQL database source (requires SQL server + database to exist)
 bash scripts/setup-purview-sources.sh \
   --purview-account purview-ai-metadata-<ENV> \
   --environment <ENV> \
@@ -404,10 +408,40 @@ bash scripts/setup-purview-sources.sh \
   --verbose
 ```
 
-**Prerequisites for SQL scan:** The Purview system MI must have `db_datareader` on the target SQL database. Grant it via:
-```sql
-CREATE USER [purview-ai-metadata-<ENV>] FROM EXTERNAL PROVIDER;
-ALTER ROLE db_datareader ADD MEMBER [purview-ai-metadata-<ENV>];
+The SQL Server can be in **any Azure region** — Purview scans cross-region without issues.
+
+**Configure scan schedule (not automated by scripts — use API):**
+
+```bash
+# Configure scan to run every N hours (e.g., every 3 hours)
+PURVIEW="purview-ai-metadata-<ENV>"
+SOURCE="sql-<SQL_DATABASE_NAME>"   # name assigned by setup-purview-sources.sh
+TOKEN=$(az account get-access-token --resource https://purview.azure.net --query accessToken -o tsv)
+
+curl -s -X PUT \
+  "https://${PURVIEW}.purview.azure.com/scan/datasources/${SOURCE}/scans/Scan-SQL/triggers/default?api-version=2022-07-01-preview" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "properties": {
+      "recurrence": {
+        "frequency": "Hour",
+        "interval": 3,
+        "startTime": "2026-01-01T00:00:00Z",
+        "timezone": "UTC"
+      },
+      "scanLevel": "Incremental"
+    }
+  }'
+```
+
+Supported frequencies: `Hour` (min interval=1), `Day`, `Week`, `Month`.
+
+**Verification:**
+```bash
+# Confirm scan schedule is active
+curl -s "https://${PURVIEW}.purview.azure.com/scan/datasources/${SOURCE}/scans/Scan-SQL/triggers/default?api-version=2022-07-01-preview" \
+  -H "Authorization: Bearer ${TOKEN}" | python -m json.tool
 ```
 
 ---
@@ -546,7 +580,7 @@ This script orchestrates all 9 phases automatically:
 5. Bicep Pass 2 (compute + functions + purview)
 6. Bridge Function deploy (zip deployment)
 7. Purview bootstrap (AI_Enrichment type + Data Curator RBAC)
-8. Purview source registration + scan trigger
+8. Purview source registration + initial scan trigger (schedule must be configured separately — see Step 8 Part C)
 9. Environment validation (30 checks)
 
 **Guardrails:** Prompts for confirmation on `prod`/`production`. Never deletes. Idempotent (safe to re-run). Auto-retries Container App AcrPull failure.
@@ -580,8 +614,8 @@ These items use Azure data-plane APIs that ARM/Bicep cannot access:
 | Item | Why | When Needed |
 |------|-----|-------------|
 | Purge soft-deleted OpenAI account | Required when re-creating in same subscription after deletion | Only on re-deploy after destroy |
-| SQL Server `db_datareader` for Purview MI | Requires SQL admin access to target database | Only when adding SQL scan source |
-| Purview scan schedule | Not yet implemented in scripts | Configure via portal or extend `setup-purview-sources.sh` |
+| SQL Server `db_datareader` for Purview MI | Requires SQL admin access to client's database | Before registering SQL data source (see Step 8 Part C) |
+| Purview scan schedule | API call required (see Step 8 Part C for curl example) | After scan is created — schedule determines trigger frequency |
 | Search index context documents | Application-specific data, not infrastructure | Upload via admin key or indexer |
 
 ---

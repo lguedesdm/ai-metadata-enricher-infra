@@ -26,7 +26,7 @@ This document provides a high-level architectural overview of the infrastructure
 │  │                                                              │    │
 │  │  ┌──────────────────────────────────────────────────────┐  │    │
 │  │  │  Azure Cosmos DB (NoSQL API)                         │  │    │
-│  │  │  - Database: enricher-db                             │  │    │
+│  │  │  - Database: metadata_enricher                       │  │    │
 │  │  │    - Container: state (TTL: 7 days)                  │  │    │
 │  │  │    - Container: audit (TTL: 180 days)                │  │    │
 │  │  │  - Partition Key: /entityType                        │  │    │
@@ -36,7 +36,7 @@ This document provides a high-level architectural overview of the infrastructure
 │  │  ┌──────────────────────────────────────────────────────┐  │    │
 │  │  │  Azure AI Search                                     │  │    │
 │  │  │  - Service: Basic tier                               │  │    │
-│  │  │  - Index: metadata-index (manual creation required)  │  │    │
+│  │  │  - Index: metadata-context-index                     │  │    │
 │  │  │  - Managed Identity (System-Assigned)                │  │    │
 │  │  └──────────────────────────────────────────────────────┘  │    │
 │  │                                                              │    │
