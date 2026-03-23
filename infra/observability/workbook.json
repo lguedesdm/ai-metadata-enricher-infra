@@ -93,7 +93,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "traces\n| where timestamp {TimeRange}\n| where customDimensions[\"event\"] == \"pipeline_completion\"\n| extend rawStatus = tostring(customDimensions[\"status\"])\n| extend DisplayStatus = case(\n    rawStatus == \"SUCCESS\", \"Successfully Enriched\",\n    rawStatus == \"SKIP\", \"Already Processed\",\n    rawStatus == \"NO_CONTEXT\", \"Insufficient Context\",\n    rawStatus == \"BLOCK\", \"Validation Protected\",\n    rawStatus == \"ERROR\", \"Processing Error\",\n    rawStatus == \"PENDING_PROTECTED\", \"Pending Review — Content Changed\",\n    \"Unknown\"\n  )\n| summarize Count = count() by DisplayStatus\n| order by Count desc",
+              "query": "traces\n| where timestamp {TimeRange}\n| where customDimensions[\"event\"] == \"pipeline_completion\"\n| extend rawStatus = tostring(customDimensions[\"status\"])\n| extend DisplayStatus = case(\n    rawStatus == \"SUCCESS\", \"Successfully Enriched\",\n    rawStatus == \"SKIP\", \"Already Processed\",\n    rawStatus == \"NO_CONTEXT\", \"Insufficient Context\",\n    rawStatus == \"BLOCK\", \"Validation Protected\",\n    rawStatus == \"ERROR\", \"Processing Error\",\n    rawStatus == \"PENDING_PROTECTED\", \"Pending Review — Content Changed\",\n    rawStatus == \"SKIPPED_UNSUPPORTED\", \"Unsupported Entity Type\",\n    \"Unknown\"\n  )\n| summarize Count = count() by DisplayStatus\n| order by Count desc",
               "size": 2,
               "title": "Execution Outcome Distribution",
               "queryType": 0,
@@ -106,7 +106,8 @@
                   { "seriesName": "Insufficient Context", "color": "orange" },
                   { "seriesName": "Validation Protected", "color": "redBright" },
                   { "seriesName": "Processing Error", "color": "red" },
-                  { "seriesName": "Pending Review — Content Changed", "color": "yellow" }
+                  { "seriesName": "Pending Review — Content Changed", "color": "yellow" },
+                  { "seriesName": "Unsupported Entity Type", "color": "gray" }
                 ]
               }
             },
@@ -117,7 +118,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "traces\n| where timestamp {TimeRange}\n| where customDimensions[\"event\"] == \"pipeline_completion\"\n| extend rawStatus = tostring(customDimensions[\"status\"])\n| extend DisplayStatus = case(\n    rawStatus == \"SUCCESS\", \"Successfully Enriched\",\n    rawStatus == \"SKIP\", \"Already Processed\",\n    rawStatus == \"NO_CONTEXT\", \"Insufficient Context\",\n    rawStatus == \"BLOCK\", \"Validation Protected\",\n    rawStatus == \"ERROR\", \"Processing Error\",\n    rawStatus == \"PENDING_PROTECTED\", \"Pending Review — Content Changed\",\n    \"Unknown\"\n  )\n| summarize Count = count() by\n    bin(timestamp, 1h),\n    DisplayStatus\n| order by timestamp asc",
+              "query": "traces\n| where timestamp {TimeRange}\n| where customDimensions[\"event\"] == \"pipeline_completion\"\n| extend rawStatus = tostring(customDimensions[\"status\"])\n| extend DisplayStatus = case(\n    rawStatus == \"SUCCESS\", \"Successfully Enriched\",\n    rawStatus == \"SKIP\", \"Already Processed\",\n    rawStatus == \"NO_CONTEXT\", \"Insufficient Context\",\n    rawStatus == \"BLOCK\", \"Validation Protected\",\n    rawStatus == \"ERROR\", \"Processing Error\",\n    rawStatus == \"PENDING_PROTECTED\", \"Pending Review — Content Changed\",\n    rawStatus == \"SKIPPED_UNSUPPORTED\", \"Unsupported Entity Type\",\n    \"Unknown\"\n  )\n| summarize Count = count() by\n    bin(timestamp, 1h),\n    DisplayStatus\n| order by timestamp asc",
               "size": 0,
               "title": "Execution Trend Over Time",
               "queryType": 0,
@@ -130,7 +131,8 @@
                   { "seriesName": "Insufficient Context", "color": "orange" },
                   { "seriesName": "Validation Protected", "color": "redBright" },
                   { "seriesName": "Processing Error", "color": "red" },
-                  { "seriesName": "Pending Review — Content Changed", "color": "yellow" }
+                  { "seriesName": "Pending Review — Content Changed", "color": "yellow" },
+                  { "seriesName": "Unsupported Entity Type", "color": "gray" }
                 ]
               }
             },
@@ -151,7 +153,7 @@
           {
             "type": 1,
             "content": {
-              "json": "## Decision Breakdown\n\nEvery execution results in one of five outcomes, each reflecting a deliberate decision by the system's quality and safety controls.\n\n| Outcome | Meaning |\n|---|---|\n| **Successfully Enriched** | Asset received a new AI-generated metadata description |\n| **Already Processed** | Asset was unchanged since last run -- no re-enrichment needed (hash match) |\n| **Insufficient Context** | No grounding data available in the knowledge base -- enrichment safely aborted to prevent ungrounded output |\n| **Validation Protected** | AI output did not meet quality standards -- write-back to the catalog was blocked |\n| **Pending Review — Content Changed** | Asset has a description awaiting human approval AND its content changed since the description was written. The system detected the change but did not overwrite the description under review. This is expected governance behavior, not an error. |\n| **Processing Error** | A transient or unexpected error occurred -- the message will be retried automatically |"
+              "json": "## Decision Breakdown\n\nEvery execution results in one of five outcomes, each reflecting a deliberate decision by the system's quality and safety controls.\n\n| Outcome | Meaning |\n|---|---|\n| **Successfully Enriched** | Asset received a new AI-generated metadata description |\n| **Already Processed** | Asset was unchanged since last run -- no re-enrichment needed (hash match) |\n| **Insufficient Context** | No grounding data available in the knowledge base -- enrichment safely aborted to prevent ungrounded output |\n| **Validation Protected** | AI output did not meet quality standards -- write-back to the catalog was blocked |\n| **Pending Review — Content Changed** | Asset has a description awaiting human approval AND its content changed since the description was written. The system detected the change but did not overwrite the description under review. This is expected governance behavior, not an error. |\n| **Unsupported Entity Type** | Entity type (e.g. server, database) is not eligible for AI_Enrichment Business Metadata write-back -- skipped before any processing |\n| **Processing Error** | A transient or unexpected error occurred -- the message will be retried automatically |"
             },
             "name": "section2-text"
           },
@@ -159,7 +161,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "traces\n| where timestamp {TimeRange}\n| where customDimensions[\"event\"] == \"pipeline_completion\"\n| extend rawStatus = tostring(customDimensions[\"status\"])\n| extend DisplayStatus = case(\n    rawStatus == \"SUCCESS\", \"Successfully Enriched\",\n    rawStatus == \"SKIP\", \"Already Processed\",\n    rawStatus == \"NO_CONTEXT\", \"Insufficient Context\",\n    rawStatus == \"BLOCK\", \"Validation Protected\",\n    rawStatus == \"ERROR\", \"Processing Error\",\n    rawStatus == \"PENDING_PROTECTED\", \"Pending Review — Content Changed\",\n    \"Unknown\"\n  )\n| summarize Count = count() by DisplayStatus\n| extend Total = toscalar(\n    traces\n    | where timestamp {TimeRange}\n    | where customDimensions[\"event\"] == \"pipeline_completion\"\n    | count\n  )\n| extend Percentage = round(100.0 * Count / Total, 1)\n| project DisplayStatus, Count, Percentage\n| order by Count desc",
+              "query": "traces\n| where timestamp {TimeRange}\n| where customDimensions[\"event\"] == \"pipeline_completion\"\n| extend rawStatus = tostring(customDimensions[\"status\"])\n| extend DisplayStatus = case(\n    rawStatus == \"SUCCESS\", \"Successfully Enriched\",\n    rawStatus == \"SKIP\", \"Already Processed\",\n    rawStatus == \"NO_CONTEXT\", \"Insufficient Context\",\n    rawStatus == \"BLOCK\", \"Validation Protected\",\n    rawStatus == \"ERROR\", \"Processing Error\",\n    rawStatus == \"PENDING_PROTECTED\", \"Pending Review — Content Changed\",\n    rawStatus == \"SKIPPED_UNSUPPORTED\", \"Unsupported Entity Type\",\n    \"Unknown\"\n  )\n| summarize Count = count() by DisplayStatus\n| extend Total = toscalar(\n    traces\n    | where timestamp {TimeRange}\n    | where customDimensions[\"event\"] == \"pipeline_completion\"\n    | count\n  )\n| extend Percentage = round(100.0 * Count / Total, 1)\n| project DisplayStatus, Count, Percentage\n| order by Count desc",
               "size": 0,
               "title": "Decision Distribution",
               "queryType": 0,
@@ -193,6 +195,7 @@
                         { "operator": "==", "thresholdValue": "Validation Protected", "representation": "redBright", "text": "{0}{1}" },
                         { "operator": "==", "thresholdValue": "Processing Error", "representation": "red", "text": "{0}{1}" },
                         { "operator": "==", "thresholdValue": "Pending Review — Content Changed", "representation": "yellow", "text": "{0}{1}" },
+                        { "operator": "==", "thresholdValue": "Unsupported Entity Type", "representation": "gray", "text": "{0}{1}" },
                         { "operator": "Default", "representation": "lightBlue", "text": "{0}{1}" }
                       ]
                     }
@@ -451,6 +454,7 @@
                         { "operator": "==", "thresholdValue": "BLOCK", "representation": "redBright", "text": "{0}{1}" },
                         { "operator": "==", "thresholdValue": "ERROR", "representation": "red", "text": "{0}{1}" },
                         { "operator": "==", "thresholdValue": "PENDING_PROTECTED", "representation": "yellow", "text": "{0}{1}" },
+                        { "operator": "==", "thresholdValue": "SKIPPED_UNSUPPORTED", "representation": "gray", "text": "{0}{1}" },
                         { "operator": "Default", "representation": "lightBlue", "text": "{0}{1}" }
                       ]
                     }
@@ -471,7 +475,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "traces\n| where timestamp {TimeRange}\n| where customDimensions[\"event\"] == \"pipeline_completion\"\n| extend rawStatus = tostring(customDimensions[\"status\"])\n| extend DisplayStatus = case(\n    rawStatus == \"SUCCESS\", \"Successfully Enriched\",\n    rawStatus == \"SKIP\", \"Already Processed\",\n    rawStatus == \"NO_CONTEXT\", \"Insufficient Context\",\n    rawStatus == \"BLOCK\", \"Validation Protected\",\n    rawStatus == \"ERROR\", \"Processing Error\",\n    rawStatus == \"PENDING_PROTECTED\", \"Pending Review — Content Changed\",\n    \"Unknown\"\n  )\n| project\n    Timestamp = timestamp,\n    CorrelationId = tostring(customDimensions[\"correlationId\"]),\n    Outcome = DisplayStatus,\n    Stage = tostring(customDimensions[\"stage\"]),\n    DurationMs = toint(customDimensions[\"durationMs\"])\n| order by Timestamp desc\n| take 20",
+              "query": "traces\n| where timestamp {TimeRange}\n| where customDimensions[\"event\"] == \"pipeline_completion\"\n| extend rawStatus = tostring(customDimensions[\"status\"])\n| extend DisplayStatus = case(\n    rawStatus == \"SUCCESS\", \"Successfully Enriched\",\n    rawStatus == \"SKIP\", \"Already Processed\",\n    rawStatus == \"NO_CONTEXT\", \"Insufficient Context\",\n    rawStatus == \"BLOCK\", \"Validation Protected\",\n    rawStatus == \"ERROR\", \"Processing Error\",\n    rawStatus == \"PENDING_PROTECTED\", \"Pending Review — Content Changed\",\n    rawStatus == \"SKIPPED_UNSUPPORTED\", \"Unsupported Entity Type\",\n    \"Unknown\"\n  )\n| project\n    Timestamp = timestamp,\n    CorrelationId = tostring(customDimensions[\"correlationId\"]),\n    Outcome = DisplayStatus,\n    Stage = tostring(customDimensions[\"stage\"]),\n    DurationMs = toint(customDimensions[\"durationMs\"])\n| order by Timestamp desc\n| take 20",
               "size": 0,
               "title": "Recent Executions",
               "queryType": 0,
@@ -491,6 +495,7 @@
                         { "operator": "==", "thresholdValue": "Validation Protected", "representation": "redBright", "text": "{0}{1}" },
                         { "operator": "==", "thresholdValue": "Processing Error", "representation": "red", "text": "{0}{1}" },
                         { "operator": "==", "thresholdValue": "Pending Review — Content Changed", "representation": "yellow", "text": "{0}{1}" },
+                        { "operator": "==", "thresholdValue": "Unsupported Entity Type", "representation": "gray", "text": "{0}{1}" },
                         { "operator": "Default", "representation": "lightBlue", "text": "{0}{1}" }
                       ]
                     }
