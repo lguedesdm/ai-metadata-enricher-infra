@@ -508,6 +508,57 @@
         ]
       },
       "name": "group-trace"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "title": "Section 6: Enrichment Details",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "## Enrichment Details\n\nDetailed view of every enrichment execution showing the entity processed, confidence signals, RAG context quality, validation outcome, and a preview of the generated description. Only executions that invoked the LLM are shown (SKIP and Unsupported Entity Type are excluded)."
+            },
+            "name": "section6-text"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "traces\n| where timestamp {TimeRange}\n| where customDimensions[\"event\"] == \"pipeline_completion\"\n| where tostring(customDimensions[\"status\"]) !in (\"SKIP\", \"SKIPPED_UNSUPPORTED\")\n| extend rawStatus = tostring(customDimensions[\"status\"])\n| extend DisplayStatus = case(\n    rawStatus == \"SUCCESS\", \"Enriched\",\n    rawStatus == \"NO_CONTEXT\", \"No Context\",\n    rawStatus == \"BLOCK\", \"Blocked\",\n    rawStatus == \"ERROR\", \"Error\",\n    rawStatus == \"PENDING_PROTECTED\", \"Pending Review\",\n    rawStatus\n  )\n| project\n    Timestamp = timestamp,\n    Element = tostring(customDimensions[\"elementName\"]),\n    Outcome = DisplayStatus,\n    Confidence = tostring(customDimensions[\"pipelineConfidence\"]),\n    Description = tostring(customDimensions[\"descriptionPreview\"]),\n    RAG = tostring(customDimensions[\"ragStatus\"]),\n    Chunks = toint(customDimensions[\"numChunks\"]),\n    Tokens = toint(customDimensions[\"tokenCount\"]),\n    Validation = tostring(customDimensions[\"validationStatus\"]),\n    Writeback = tostring(customDimensions[\"writebackSuccess\"]),\n    DurationMs = toint(customDimensions[\"durationMs\"]),\n    CorrelationId = tostring(customDimensions[\"correlationId\"])\n| order by Timestamp desc\n| take 50",
+              "size": 0,
+              "title": "Enrichment Execution Details",
+              "noDataMessage": "No enrichment executions found in the selected time range. Executions that were skipped (hash match or unsupported type) are excluded from this view.",
+              "queryType": 0,
+              "resourceType": "microsoft.insights/components",
+              "visualization": "table",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Outcome",
+                    "formatter": 1
+                  },
+                  {
+                    "columnMatch": "Confidence",
+                    "formatter": 1
+                  },
+                  {
+                    "columnMatch": "Description",
+                    "formatter": 1,
+                    "formatOptions": {
+                      "customColumnWidthSetting": "400px"
+                    }
+                  }
+                ]
+              }
+            },
+            "name": "enrichment-details-table"
+          }
+        ]
+      },
+      "name": "group-enrichment-details"
     }
   ],
   "styleSettings": {},
