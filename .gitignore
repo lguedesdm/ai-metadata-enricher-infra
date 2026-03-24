@@ -54,3 +54,4 @@ functions/purview-bridge/deploy*.zip
 node_modules/
 npm-debug.log*
 CLAUDE.md
+.claude/
