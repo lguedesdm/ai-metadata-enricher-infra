@@ -55,3 +55,7 @@ node_modules/
 npm-debug.log*
 CLAUDE.md
 .claude/
+
+# Function App publish artifacts
+functions/purview-bridge/publish_v*/
+functions/purview-bridge/deploy-*.zip
