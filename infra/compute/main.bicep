@@ -84,6 +84,18 @@ param logAnalyticsSharedKey string = ''
 @description('Application Insights connection string. Set as APPLICATIONINSIGHTS_CONNECTION_STRING env var. Leave empty until observability is provisioned.')
 param appInsightsConnectionString string = ''
 
+@description('Storage Account blob endpoint for onboarding budget (e.g. https://<name>.blob.core.windows.net)')
+param onboardingStorageUrl string = ''
+
+@description('Enable daily budget for onboarding (true/false). When false, all REPROCESS decisions proceed without limit.')
+param onboardingBudgetEnabled string = 'false'
+
+@description('Maximum number of REPROCESS decisions per day for onboarding asset types. 0 = unlimited.')
+param onboardingDailyBudget string = '0'
+
+@description('Comma-separated entity types that count against the onboarding budget (e.g. azure_sql_table). Empty = all types count.')
+param onboardingAllowedTypes string = ''
+
 // =============================================================================
 // CONTAINER APPS ENVIRONMENT
 // =============================================================================
@@ -249,6 +261,51 @@ resource orchestratorApp 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
               value: appInsightsConnectionString
+            }
+
+            // ------------------------------------------------------------------
+            // Onboarding Budget — daily REPROCESS limiter
+            // ------------------------------------------------------------------
+            // Controls how many new assets can be enriched per day.
+            // Assets that hash-match (SKIP) are never affected by the budget.
+            // Only assets whose entity type is in ONBOARDING_ALLOWED_TYPES
+            // count against the daily limit. All other types pass freely.
+            //
+            // The budget state is stored in a JSON blob (onboarding/daily-budget.json)
+            // in the storage account. It resets automatically when the UTC date changes.
+            //
+            // Fail-open: if storage is unreachable, processing proceeds without limit.
+            //
+            // Rollback: set ONBOARDING_BUDGET_ENABLED=false — no redeploy needed.
+            //
+            // Typical configurations:
+            //   Canary:  ENABLED=true, BUDGET=5,   TYPES=azure_sql_table
+            //   Ramp:    ENABLED=true, BUDGET=100, TYPES=azure_sql_table,azure_sql_view
+            //   Full:    ENABLED=false (or BUDGET=0)
+            // ------------------------------------------------------------------
+            {
+              name: 'ONBOARDING_BUDGET_ENABLED'
+              value: onboardingBudgetEnabled
+            }
+            {
+              name: 'ONBOARDING_DAILY_BUDGET'
+              value: onboardingDailyBudget
+            }
+            {
+              name: 'ONBOARDING_ALLOWED_TYPES'
+              value: onboardingAllowedTypes
+            }
+            {
+              name: 'ONBOARDING_STORAGE_URL'
+              value: onboardingStorageUrl
+            }
+            {
+              name: 'ONBOARDING_STORAGE_CONTAINER'
+              value: 'onboarding'                  // matches storage/main.bicep onboardingContainer
+            }
+            {
+              name: 'ONBOARDING_BUDGET_BLOB'
+              value: 'daily-budget.json'
             }
 
             // ------------------------------------------------------------------

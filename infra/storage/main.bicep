@@ -32,6 +32,9 @@ param minimumTlsVersion string = 'TLS1_2'
 @description('Unique suffix for globally unique resources (leave empty for auto-generated)')
 param uniqueSuffix string = ''
 
+@description('Principal ID of the Orchestrator Managed Identity. When provided, grants Storage Blob Data Contributor on the onboarding container for daily budget tracking.')
+param orchestratorPrincipalId string = ''
+
 // =============================================================================
 // STORAGE ACCOUNT
 // =============================================================================
@@ -124,6 +127,31 @@ resource schemasContainer 'Microsoft.Storage/storageAccounts/blobServices/contai
 }
 
 // =============================================================================
+// ONBOARDING CONTAINER
+// =============================================================================
+// Stores the daily budget state for the onboarding system.
+// The Orchestrator reads/writes a JSON blob (daily-budget.json) that tracks
+// how many new assets have been processed today. The budget resets daily (UTC).
+//
+// Onboarding system overview:
+//   The Orchestrator has a daily REPROCESS budget. Assets that hash-match
+//   (SKIP) are never affected. Only new/changed assets of types listed in
+//   ONBOARDING_ALLOWED_TYPES count against the budget. When the budget is
+//   exhausted, remaining new assets are logged as SKIP_BUDGET and retried
+//   the next day.
+//
+// Rollback: set ONBOARDING_BUDGET_ENABLED=false on the Orchestrator Container
+// App. No redeploy needed — the budget module is fail-open by design.
+
+resource onboardingContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-01-01' = {
+  parent: blobService
+  name: 'onboarding'
+  properties: {
+    publicAccess: 'None'
+  }
+}
+
+// =============================================================================
 // RBAC - ROLE ASSIGNMENTS
 // =============================================================================
 // TASK 3: Apply RBAC for Storage Account access using Managed Identity
@@ -145,6 +173,18 @@ resource storageRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')
     principalId: storageAccount.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Storage Blob Data Contributor for the Orchestrator MI on the onboarding container.
+// Required for the daily budget module to read/write daily-budget.json.
+resource orchestratorOnboardingRbac 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(orchestratorPrincipalId)) {
+  name: guid(onboardingContainer.id, orchestratorPrincipalId, 'StorageBlobDataContributor')
+  scope: onboardingContainer
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')
+    principalId: orchestratorPrincipalId
     principalType: 'ServicePrincipal'
   }
 }
