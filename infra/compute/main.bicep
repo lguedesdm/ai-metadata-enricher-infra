@@ -90,8 +90,8 @@ param onboardingStorageUrl string = ''
 @description('Enable daily budget for onboarding (true/false). When false, all REPROCESS decisions proceed without limit.')
 param onboardingBudgetEnabled string = 'false'
 
-@description('Maximum number of REPROCESS decisions per day for onboarding asset types. 0 = unlimited.')
-param onboardingDailyBudget string = '0'
+@description('Maximum number of REPROCESS decisions per day for onboarding asset types. 0 = unlimited. Default 25 protects against unexpected cost in deploys without explicit configuration.')
+param onboardingDailyBudget string = '25'
 
 @description('Comma-separated entity types that count against the onboarding budget (e.g. azure_sql_table). Empty = all types count.')
 param onboardingAllowedTypes string = ''
