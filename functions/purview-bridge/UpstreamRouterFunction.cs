@@ -188,93 +188,12 @@ public class UpstreamRouterFunction
         }
 
         // ------------------------------------------------------------------ //
-        // 4b. ONBOARDING GATE — limit how many new assets are sent per scan
-        // ------------------------------------------------------------------ //
-        // When ONBOARDING_ENABLED=true, only ONBOARDING_WAVE_LIMIT assets
-        // of the allowed types are sent. All other assets (non-onboarding
-        // types) pass through unconditionally.
-        //
-        // This is stateless: the limit applies to the current search result
-        // list, not across scans. No Cosmos or external state needed.
-        var onboardingEnabled = string.Equals(
-            Environment.GetEnvironmentVariable("ONBOARDING_ENABLED") ?? "false",
-            "true", StringComparison.OrdinalIgnoreCase);
-
-        List<AssetRef> assetsToSend;
-
-        if (onboardingEnabled)
-        {
-            var waveLimit = int.TryParse(
-                Environment.GetEnvironmentVariable("ONBOARDING_WAVE_LIMIT"), out var wl) ? wl : 0;
-            var allowedTypesRaw = Environment.GetEnvironmentVariable("ONBOARDING_ALLOWED_TYPES") ?? "";
-            var allowedTypes = new HashSet<string>(
-                allowedTypesRaw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
-                StringComparer.OrdinalIgnoreCase);
-
-            // Split: onboarding (type matches) vs normal (everything else)
-            List<AssetRef> onboardingAssets;
-            List<AssetRef> normalAssets;
-
-            if (allowedTypes.Count > 0)
-            {
-                onboardingAssets = enrichableAssets.Where(a => allowedTypes.Contains(a.EntityType)).ToList();
-                normalAssets = enrichableAssets.Where(a => !allowedTypes.Contains(a.EntityType)).ToList();
-            }
-            else
-            {
-                // No type filter = all are onboarding candidates
-                onboardingAssets = enrichableAssets;
-                normalAssets = new List<AssetRef>();
-            }
-
-            // Apply wave limit to onboarding assets only
-            List<AssetRef> onboardingSent;
-            List<AssetRef> onboardingSkipped;
-
-            if (waveLimit > 0 && onboardingAssets.Count > waveLimit)
-            {
-                onboardingSent = onboardingAssets.Take(waveLimit).ToList();
-                onboardingSkipped = onboardingAssets.Skip(waveLimit).ToList();
-            }
-            else
-            {
-                onboardingSent = onboardingAssets;
-                onboardingSkipped = new List<AssetRef>();
-            }
-
-            // Log skipped assets
-            foreach (var skipped in onboardingSkipped)
-            {
-                _logger.LogInformation(
-                    "ONBOARDING_GATE: skipping asset {Name} ({Type}) — wave limit {WaveLimit} reached. CorrelationId={CorrelationId}",
-                    skipped.Name, skipped.EntityType, waveLimit, correlationId);
-            }
-
-            _logger.LogInformation(
-                "ONBOARDING_GATE: {OnboardingSent}/{OnboardingTotal} onboarding assets sent (limit={WaveLimit}, types={AllowedTypes}), {NormalCount} normal assets passed through. CorrelationId={CorrelationId}",
-                onboardingSent.Count, onboardingAssets.Count, waveLimit, allowedTypesRaw, normalAssets.Count, correlationId);
-
-            assetsToSend = normalAssets.Concat(onboardingSent).ToList();
-        }
-        else
-        {
-            assetsToSend = enrichableAssets;
-        }
-
-        if (assetsToSend.Count == 0)
-        {
-            _logger.LogInformation(
-                "ONBOARDING_GATE: no assets to send after gating. CorrelationId={CorrelationId}", correlationId);
-            return;
-        }
-
-        // ------------------------------------------------------------------ //
-        // 5. Send each asset to enrichment-requests queue
+        // 5. Send each enrichable asset to enrichment-requests queue
         // ------------------------------------------------------------------ //
         EnsureSender();
         var outMessages = new List<ServiceBusMessage>();
 
-        foreach (var asset in assetsToSend)
+        foreach (var asset in enrichableAssets)
         {
             var payload = JsonSerializer.Serialize(new
             {
