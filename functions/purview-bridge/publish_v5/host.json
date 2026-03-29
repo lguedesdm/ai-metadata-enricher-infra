@@ -1,0 +1,21 @@
+{
+  "version": "2.0",
+  "logging": {
+    "applicationInsights": {
+      "samplingSettings": {
+        "isEnabled": true,
+        "excludedTypes": "Request"
+      },
+      "enableLiveMetricsFilters": true
+    }
+  },
+  "extensions": {
+    "eventHubs": {
+      "batchCheckpointFrequency": 1
+    },
+    "serviceBus": {
+      "maxAutoRenewDuration": "00:12:00"
+    }
+  },
+  "functionTimeout": "00:10:00"
+}

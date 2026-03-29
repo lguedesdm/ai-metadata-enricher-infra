@@ -98,6 +98,38 @@ public class UpstreamRouterFunction
         _logger.LogInformation("{ObsLog}", ObsLog("router", "message_received", correlationId));
 
         // ------------------------------------------------------------------ //
+        // 0. Filter: only process Succeeded scan events
+        // ------------------------------------------------------------------ //
+        // Purview emits multiple events per scan (Throttled, Queued, Running,
+        // Succeeded). Only the final Succeeded event carries meaningful data.
+        // Processing intermediate events wastes Purview API calls and creates
+        // duplicate enrichment-requests messages.
+        try
+        {
+            using var filterDoc = JsonDocument.Parse(body);
+            var filterRoot = filterDoc.RootElement;
+            JsonElement filterRecord = filterRoot;
+            if (filterRoot.TryGetProperty("records", out var filterArr) && filterArr.GetArrayLength() > 0)
+                filterRecord = filterArr[0];
+
+            var resultType = filterRecord.TryGetProperty("resultType", out var rtProp)
+                ? rtProp.GetString() ?? ""
+                : "";
+
+            if (!string.Equals(resultType, "Succeeded", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogInformation(
+                    "Skipping non-Succeeded event (resultType={ResultType})", resultType);
+                return; // Message completed — not retried
+            }
+        }
+        catch (Exception filterEx)
+        {
+            // Fail-open: if we can't parse, proceed with processing
+            _logger.LogWarning(filterEx, "Could not parse resultType — proceeding with processing");
+        }
+
+        // ------------------------------------------------------------------ //
         // 1. Resolve data source name
         //    Primary  : DataSourceName field (stable, documented by Microsoft)
         //    Fallback : regex on scanName (custom format, not guaranteed)
@@ -321,31 +353,65 @@ public class UpstreamRouterFunction
         string baseUrl, string token, string dataSourceName)
     {
         var results = new List<AssetRef>();
-        int offset = 0;
+        string? continuationToken = null;
         const int pageSize = 100;
+        const int maxPages = 50; // Safety: prevent infinite pagination
+        int page = 0;
 
         while (true)
         {
-            var requestBody = JsonSerializer.Serialize(new
+            page++;
+            if (page > maxPages)
             {
-                keywords = dataSourceName,
-                limit    = pageSize,
-                offset   = offset
-            });
+                _logger.LogWarning(
+                    "Pagination safety limit reached ({MaxPages} pages, {Count} assets) — returning partial results",
+                    maxPages, results.Count);
+                break;
+            }
 
-            using var resp = await SendWithRetry(() =>
+            // Build request body: first page has no token, subsequent pages use continuationToken
+            var requestObj = new Dictionary<string, object>
             {
-                var req = new HttpRequestMessage(
-                    HttpMethod.Post,
-                    $"{baseUrl}/search/query?api-version=2023-09-01")
+                ["keywords"] = dataSourceName,
+                ["limit"]    = pageSize
+            };
+            if (continuationToken != null)
+                requestObj["continuationToken"] = continuationToken;
+
+            var requestBody = JsonSerializer.Serialize(requestObj);
+
+            HttpResponseMessage resp;
+            try
+            {
+                resp = await SendWithRetry(() =>
                 {
-                    Content = new StringContent(requestBody, Encoding.UTF8, "application/json")
-                };
-                req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-                return req;
-            });
+                    var req = new HttpRequestMessage(
+                        HttpMethod.Post,
+                        $"{baseUrl}/search/query?api-version=2023-09-01")
+                    {
+                        Content = new StringContent(requestBody, Encoding.UTF8, "application/json")
+                    };
+                    req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                    return req;
+                });
+            }
+            catch (Exception ex)
+            {
+                // GUARDRAIL: if pagination fails, return what we have from previous pages.
+                // This ensures the pipeline processes at least the first page of results
+                // rather than failing entirely.
+                if (results.Count > 0)
+                {
+                    _logger.LogWarning(ex,
+                        "Pagination failed on page {Page} — returning {Count} assets from previous pages (guardrail)",
+                        page, results.Count);
+                    break;
+                }
+                throw; // First page failure — no guardrail, propagate error
+            }
 
-            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            var responseBody = await resp.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(responseBody);
 
             if (!doc.RootElement.TryGetProperty("value", out var valueArr))
                 break;
@@ -363,11 +429,18 @@ public class UpstreamRouterFunction
                 count++;
             }
 
-            // Last page — fewer results than page size means no more pages
-            if (count < pageSize)
-                break;
+            _logger.LogInformation(
+                "Search page {Page}: {Count} results, total so far: {Total}",
+                page, count, results.Count);
 
-            offset += pageSize;
+            // Check for continuationToken — this is how Purview Search API paginates
+            continuationToken = doc.RootElement.TryGetProperty("continuationToken", out var ctProp)
+                ? ctProp.GetString()
+                : null;
+
+            // No more pages if: no continuation token, or fewer results than page size
+            if (string.IsNullOrEmpty(continuationToken) || count < pageSize)
+                break;
         }
 
         return results;
