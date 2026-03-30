@@ -464,6 +464,13 @@ public class UpstreamRouterFunction
 
             if (resp.StatusCode != System.Net.HttpStatusCode.TooManyRequests)
             {
+                if (!resp.IsSuccessStatusCode)
+                {
+                    var errorBody = await resp.Content.ReadAsStringAsync();
+                    _logger.LogError(
+                        "Purview API: HTTP {StatusCode} — URL: {Url} — Body: {ErrorBody}",
+                        (int)resp.StatusCode, req.RequestUri, errorBody);
+                }
                 resp.EnsureSuccessStatusCode();
                 return resp;
             }

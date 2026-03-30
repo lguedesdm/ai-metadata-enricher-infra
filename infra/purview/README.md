@@ -114,7 +114,7 @@ The bootstrap script automates Business Metadata Type creation and Data Curator 
 
 The script is **idempotent** — safe to run multiple times:
 - `PUT /types/typedefs` creates or updates the `AI_Enrichment` Business Metadata Type
-- Metadata Policy API adds principals to data-curator only if not already present
+- Metadata Policy API adds principals to data-curator and purview-reader only if not already present
 
 This enables the event pipeline: Purview scan completion > Event Hub > Bridge Function > Service Bus > Orchestrator.
 

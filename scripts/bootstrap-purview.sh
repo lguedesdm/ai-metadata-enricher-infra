@@ -4,7 +4,9 @@
 # =============================================================================
 # Automates Purview data-plane setup that cannot be done via Bicep:
 #   Part A: Creates/updates the AI_Enrichment Business Metadata Type
-#   Part B: Assigns Data Curator (root collection admin) to managed identities
+#   Part B: Assigns Purview RBAC roles to managed identities:
+#           - data-curator: Orchestrator + Bridge MIs (write metadata)
+#           - purview-reader: Bridge MI (required for Purview Search API)
 #
 # Prerequisites:
 #   - Azure CLI authenticated (az login)
@@ -142,15 +144,17 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Part B: Assign Data Curator role via Metadata Policy API (data-plane)
+# Part B: Assign Purview RBAC roles via Metadata Policy API (data-plane)
 # ---------------------------------------------------------------------------
 # The az purview account add-root-collection-admin CLI command uses ARM
 # control-plane and fails for guest users (#EXT#). Instead, we use the
 # Purview Metadata Policy API (data-plane) which works for any Collection
-# Admin. This approach directly edits the data-curator attribute rule to
-# ensure both MIs have the role.
+# Admin. This approach directly edits attribute rules to ensure both MIs
+# have the required roles:
+#   - data-curator: both Orchestrator and Bridge MIs (write metadata)
+#   - purview-reader: Bridge MI only (Purview Search API requires this)
 echo ""
-echo "--- Part B: Data Curator RBAC (Metadata Policy API) ---"
+echo "--- Part B: Purview RBAC (Metadata Policy API) ---"
 
 # Discover the root collection policy ID
 POLICIES_RESPONSE=$(curl -s -w "\n%{http_code}" \
@@ -181,7 +185,7 @@ if [[ -z "$POLICY_ID" ]]; then
 fi
 echo "Root collection policy ID: $POLICY_ID"
 
-# Fetch, update, and PUT the policy — adding both MIs to data-curator
+# Fetch, update, and PUT the policy — adding MIs to data-curator and purview-reader
 CURRENT_POLICY=$(curl -s \
   -H "Authorization: Bearer $TOKEN" \
   "${PURVIEW_ENDPOINT}/policystore/metadataPolicies/${POLICY_ID}?api-version=2021-07-01")
@@ -192,6 +196,8 @@ policy = json.load(sys.stdin)
 orch_id = '${ORCHESTRATOR_PRINCIPAL_ID}'
 bridge_id = '${BRIDGE_PRINCIPAL_ID}'
 changed = False
+
+# data-curator: both Orchestrator and Bridge MIs
 for rule in policy['properties']['attributeRules']:
     if 'data-curator' in rule['id']:
         principals = rule['dnfCondition'][0][0]['attributeValueIncludedIn']
@@ -202,6 +208,19 @@ for rule in policy['properties']['attributeRules']:
                 changed = True
             else:
                 print(f'  {label} ({pid}) already in data-curator (no-op)', file=sys.stderr)
+
+# purview-reader: Bridge MI only (required for Purview Search API)
+for rule in policy['properties']['attributeRules']:
+    if 'purview-reader' in rule['id']:
+        principals = rule['dnfCondition'][0][0]['attributeValueIncludedIn']
+        if bridge_id not in principals:
+            principals.append(bridge_id)
+            print(f'  Added Bridge MI ({bridge_id}) to purview-reader', file=sys.stderr)
+            changed = True
+        else:
+            print(f'  Bridge MI ({bridge_id}) already in purview-reader (no-op)', file=sys.stderr)
+        break
+
 if not changed:
     print('  All principals already present — idempotent', file=sys.stderr)
 print(json.dumps(policy))
@@ -216,7 +235,7 @@ POLICY_RESPONSE=$(curl -s -w "\n%{http_code}" \
 POLICY_HTTP=$(echo "$POLICY_RESPONSE" | tail -1)
 
 if [[ "$POLICY_HTTP" -eq 200 ]]; then
-  echo "OK: Data Curator role assignments updated (HTTP $POLICY_HTTP)"
+  echo "OK: Purview role assignments updated (data-curator + purview-reader) (HTTP $POLICY_HTTP)"
 else
   POLICY_ERR=$(echo "$POLICY_RESPONSE" | sed '$d')
   echo "ERROR: Failed to update metadata policy (HTTP $POLICY_HTTP)" >&2

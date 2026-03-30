@@ -368,12 +368,13 @@ echo ""
 # =============================================================================
 # PURVIEW DATA-PLANE (3 checks)
 # =============================================================================
-echo "--- Purview Data-Plane (3 checks) ---"
+echo "--- Purview Data-Plane (4 checks) ---"
 
 if [[ "$PURVIEW_OK" != "true" ]]; then
   check_skip "PV-001" "Purview custom type AI_Enrichment — Purview not available"
   check_skip "PV-002" "Orchestrator in data-curator policy — Purview not available"
   check_skip "PV-003" "Bridge in data-curator policy — Purview not available"
+  check_skip "PV-004" "Bridge in purview-reader policy — Purview not available"
 else
   PV_TOKEN=$(az account get-access-token --resource "https://purview.azure.net" --query accessToken -o tsv 2>/dev/null)
   PV_ENDPOINT="https://${PURVIEW}.purview.azure.com"
@@ -382,6 +383,7 @@ else
     check_skip "PV-001" "Purview custom type — could not obtain token"
     check_skip "PV-002" "Orchestrator in data-curator — could not obtain token"
     check_skip "PV-003" "Bridge in data-curator — could not obtain token"
+    check_skip "PV-004" "Bridge in purview-reader — could not obtain token"
   else
     # PV-001: Custom type AI_Enrichment
     HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
@@ -448,9 +450,35 @@ print('true' if found else 'false')
       else
         check_skip "PV-003" "Bridge in data-curator — principal ID unknown"
       fi
+
+      # PV-004: Bridge MI in purview-reader
+      if [[ -n "$BRIDGE_PRINCIPAL" ]]; then
+        BRIDGE_IN_READER=$(echo "$POLICIES_JSON" | python -c "
+import sys, json
+data = json.load(sys.stdin)
+found = False
+for policy in data.get('values', []):
+    for rule in policy.get('properties', {}).get('attributeRules', []):
+        if 'purview-reader' in rule.get('id', ''):
+            members = rule.get('dnfCondition', [])
+            for group in members:
+                for cond in group:
+                    if '${BRIDGE_PRINCIPAL}' in str(cond.get('attributeValueIncludedIn', [])):
+                        found = True
+print('true' if found else 'false')
+" 2>/dev/null)
+        if [[ "$BRIDGE_IN_READER" == "true" ]]; then
+          check_pass "PV-004" "Bridge MI in purview-reader policy"
+        else
+          check_fail "PV-004" "Bridge MI NOT in purview-reader policy"
+        fi
+      else
+        check_skip "PV-004" "Bridge in purview-reader — principal ID unknown"
+      fi
     else
       check_fail "PV-002" "Orchestrator in data-curator — failed to fetch policies"
       check_fail "PV-003" "Bridge in data-curator — failed to fetch policies"
+      check_fail "PV-004" "Bridge in purview-reader — failed to fetch policies"
     fi
   fi
 fi
