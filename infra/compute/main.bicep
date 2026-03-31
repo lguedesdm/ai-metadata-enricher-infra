@@ -72,7 +72,7 @@ param openAiDeploymentName string = ''
 param purviewAccountName string = ''
 
 @description('Environment identifier (dev, test, prod)')
-param environment string = 'dev'
+param environment string
 
 @description('Log Analytics workspace customer ID. When provided, Container Apps stdout/stderr logs are routed to the workspace.')
 param logAnalyticsWorkspaceCustomerId string = ''

@@ -8,7 +8,7 @@
 // =============================================================================
 
 @description('The environment name (dev, test, prod)')
-param environment string = 'dev'
+param environment string
 
 @description('The Azure region for resource deployment')
 param location string = resourceGroup().location

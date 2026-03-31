@@ -10,10 +10,10 @@
 // =============================================================================
 
 @description('Cosmos DB account name (existing)')
-param accountName string = 'cosmos-ai-metadata-dev'
+param accountName string
 
 @description('Logical database name (existing)')
-param databaseName string = 'metadata'
+param databaseName string = 'metadata_enricher'
 
 @description('Partition key path for containers')
 param partitionKeyPath string = '/entityType'

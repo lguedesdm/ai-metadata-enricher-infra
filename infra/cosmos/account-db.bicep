@@ -16,7 +16,7 @@
 // =============================================================================
 
 @description('Cosmos DB account name')
-param cosmosAccountName string = 'cosmos-ai-metadata-dev'
+param cosmosAccountName string
 
 @description('Azure region for the Cosmos DB account')
 param location string

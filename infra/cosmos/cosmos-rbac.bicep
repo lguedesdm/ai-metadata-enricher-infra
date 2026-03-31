@@ -33,7 +33,7 @@
 // =============================================================================
 
 @description('Cosmos DB account name (must match the deployed account)')
-param cosmosAccountName string = 'cosmos-ai-metadata-dev'
+param cosmosAccountName string
 
 @description('Principal ID of the Orchestrator Managed Identity (Container App). Leave empty to skip assignment.')
 param orchestratorPrincipalId string = ''

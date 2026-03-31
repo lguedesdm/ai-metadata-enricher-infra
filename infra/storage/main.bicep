@@ -152,6 +152,52 @@ resource onboardingContainer 'Microsoft.Storage/storageAccounts/blobServices/con
 }
 
 // =============================================================================
+// LIFECYCLE MANAGEMENT POLICY
+// =============================================================================
+// Auto-delete blobs older than 90 days in RAG context containers.
+// These containers hold Synergy/Zipline/documentation exports that are
+// periodically replaced. Stale blobs waste storage and are never queried.
+//
+// Excluded containers:
+//   - schemas   : Frozen schema definitions — must be permanent.
+//   - onboarding: Daily budget state managed by Orchestrator code.
+
+resource lifecyclePolicy 'Microsoft.Storage/storageAccounts/managementPolicies@2023-01-01' = {
+  parent: storageAccount
+  name: 'default'
+  properties: {
+    policy: {
+      rules: [
+        {
+          enabled: true
+          name: 'delete-stale-context-blobs'
+          type: 'Lifecycle'
+          definition: {
+            actions: {
+              baseBlob: {
+                delete: {
+                  daysAfterModificationGreaterThan: 90
+                }
+              }
+            }
+            filters: {
+              blobTypes: [
+                'blockBlob'
+              ]
+              prefixMatch: [
+                'synergy/'
+                'zipline/'
+                'documentation/'
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}
+
+// =============================================================================
 // RBAC - ROLE ASSIGNMENTS
 // =============================================================================
 // TASK 3: Apply RBAC for Storage Account access using Managed Identity
