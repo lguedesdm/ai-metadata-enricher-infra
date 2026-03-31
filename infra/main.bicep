@@ -99,7 +99,7 @@ param deployOpenAI bool = false
 param openAiModelName string = 'gpt-4o'
 
 @description('GPT model version to deploy when deployOpenAI=true.')
-param openAiModelVersion string = '2024-05-13'
+param openAiModelVersion string = '2024-11-20'
 
 @description('Token-per-minute capacity in thousands for the GPT deployment. 10 = 10K TPM (Dev default).')
 param openAiCapacityThousands int = 10

@@ -49,7 +49,7 @@ param tags object
 param modelName string = 'gpt-4o'
 
 @description('GPT model version. Must match an available version for the selected model.')
-param modelVersion string = '2024-05-13'
+param modelVersion string = '2024-11-20'
 
 @description('Deployment name — exposed as AZURE_OPENAI_DEPLOYMENT_NAME env var in the orchestrator.')
 param deploymentName string = 'gpt-4o'

@@ -128,6 +128,13 @@ llm:
     rag_required: true
     validation_required: true
 
+  retry:
+    module: src/infrastructure/retry.py
+    retryable_status_codes: [429, 503]
+    max_attempts: 3
+    backoff_seconds: [1, 2, 4]
+    applied_to: [llm_completion, purview_get_entity, purview_write_description]
+
 ---
 
 state_store:
@@ -178,6 +185,13 @@ storage:
       schemas:
         purpose: metadata_schemas
 
+    lifecyclePolicy:
+      name: delete-stale-context-blobs
+      action: delete
+      daysAfterModification: 90
+      appliesTo: [synergy/, zipline/, documentation/]
+      excludes: [schemas/]
+
 ---
 
 security:
@@ -206,6 +220,11 @@ observability:
     - validation_failures
     - purview_write_errors
     - ai_search_errors
+    - skip_decisions
+    - dlq_messages
+    - host_alive
+    - pipeline_failure_warnings   # structured WARNING on enrichment failure
+    - retry_warnings              # WARNING on each transient retry attempt (429/503)
 
 ---
 

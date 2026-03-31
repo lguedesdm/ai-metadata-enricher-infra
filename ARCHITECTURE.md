@@ -27,7 +27,7 @@ This document provides a high-level architectural overview of the infrastructure
 │  │  ┌──────────────────────────────────────────────────────┐  │    │
 │  │  │  Azure Cosmos DB (NoSQL API)                         │  │    │
 │  │  │  - Database: metadata_enricher                       │  │    │
-│  │  │    - Container: state (TTL: 7 days)                  │  │    │
+│  │  │    - Container: state (TTL: 60 days)                 │  │    │
 │  │  │    - Container: audit (TTL: 180 days)                │  │    │
 │  │  │  - Partition Key: /entityType                        │  │    │
 │  │  │  - Managed Identity (System-Assigned)                │  │    │
@@ -75,6 +75,8 @@ This document provides a high-level architectural overview of the infrastructure
 - `schemas`: JSON schemas and contracts
 
 **Security**: System-assigned Managed Identity, RBAC-based access, TLS 1.2+
+
+**Lifecycle Management**: Auto-delete blobs older than 90 days in `synergy/`, `zipline/`, `documentation/` containers. These hold periodically replaced RAG context exports — stale blobs are never queried. The `schemas/` container is excluded (frozen artifacts, permanent).
 
 ---
 
@@ -220,9 +222,9 @@ Purview → Event Hub (purview-diagnostics)
 ## Governance and Compliance
 
 ### Data Retention
-- **State Data**: 7-day TTL (auto-delete)
+- **State Data**: 60-day TTL (auto-delete)
 - **Audit Logs**: 180-day TTL (auto-delete)
-- **Blob Storage**: 7-day soft delete retention (Dev)
+- **Blob Storage**: 7-day soft delete retention + lifecycle management policy (auto-delete blobs older than 90 days in `synergy/`, `zipline/`, `documentation/` containers; `schemas/` is excluded)
 
 ### Audit Trail
 All enrichment operations logged to Cosmos DB `audit` container:

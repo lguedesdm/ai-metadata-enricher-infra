@@ -208,7 +208,7 @@ cp infra/parameters.template.bicepparam infra/parameters.<env>.bicepparam
 Edit the new file and replace all `<PLACEHOLDER>` values. Refer to `parameters.dev.bicepparam` for a working example.
 
 Key values to configure:
-- `environment` — target environment name (e.g., `test`, `staging`, `prod`)
+- `environment` — **(required, no default)** target environment name (e.g., `test`, `staging`, `prod`). Omitting this will cause a deployment validation error.
 - `location` — Azure region
 - `storageSku` — use `Standard_GRS` or `Standard_RAGRS` for production
 - `searchSku` — use `standard` or higher for production workloads
