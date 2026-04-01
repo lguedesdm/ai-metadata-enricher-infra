@@ -168,9 +168,3 @@ ai-metadata-enricher-infra/
 - RBAC follows least-privilege principle
 - Dev uses public endpoints; prod planned with Private Endpoints
 
-## Estimated Costs
-
-| Environment | Monthly |
-|-------------|---------|
-| Dev | ~$100 |
-| Prod | ~$325 |
