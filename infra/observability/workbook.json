@@ -46,6 +46,111 @@
       "content": {
         "version": "NotebookGroup/1.0",
         "groupType": "editable",
+        "title": "Environment Constraints: Onboarding Budget",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "## Environment Constraints -- Onboarding Budget\n\nThe onboarding budget controls how many **new** assets the system will enrich per day. This is a safety mechanism to prevent runaway LLM costs during initial onboarding or after large scan expansions. When the daily limit is reached, new assets are deferred until midnight UTC -- assets that are unchanged (hash match) are never affected by the budget.\n\nThe configuration below reflects the most recent orchestrator startup. If no initialization event is found, the orchestrator may not have started within the selected time range."
+            },
+            "name": "constraints-text"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let initLog = traces\n| where timestamp > ago(7d)\n| where message == \"Onboarding budget initialized\"\n| top 1 by timestamp desc\n| project\n    Enabled = tostring(customDimensions[\"enabled\"]),\n    DailyBudget = tostring(customDimensions[\"dailyBudget\"]),\n    AllowedTypes = tostring(customDimensions[\"allowedTypes\"]),\n    LastInit = timestamp;\nlet enabled = toscalar(initLog | project Enabled);\nlet budget = toscalar(initLog | project DailyBudget);\nlet types = toscalar(initLog | project AllowedTypes);\nlet lastInit = toscalar(initLog | project LastInit);\nprint x=1 | project Metric = 'Budget Enabled', Value = iff(enabled == \"True\", \"Yes\", iff(isempty(enabled), \"No data\", \"No\"))\n| union (print x=1 | project Metric = 'Daily Limit', Value = iff(isempty(budget), \"No data\", iff(budget == \"0\", \"Unlimited\", budget)))\n| union (print x=1 | project Metric = 'Allowed Entity Types', Value = iff(isempty(types), \"No data\", iff(types == \"all\", \"All types\", types)))\n| union (print x=1 | project Metric = 'Last Orchestrator Init', Value = iff(isnull(lastInit), \"No data\", substring(tostring(lastInit), 0, 16)))",
+              "size": 4,
+              "title": "Current Configuration",
+              "noDataMessage": "No orchestrator initialization events found in the last 7 days.",
+              "queryType": 0,
+              "resourceType": "microsoft.insights/components",
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Metric",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "Value",
+                  "formatter": 1
+                },
+                "showBorder": true
+              }
+            },
+            "name": "constraints-config-tiles"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let budgetSkipped = traces\n| where timestamp {TimeRange}\n| where customDimensions[\"event\"] == \"pipeline_completion\"\n| where tostring(customDimensions[\"status\"]) == \"SKIP_BUDGET\"\n| count\n| project Skipped = Count;\nlet enriched = traces\n| where timestamp {TimeRange}\n| where customDimensions[\"event\"] == \"pipeline_completion\"\n| where tostring(customDimensions[\"status\"]) == \"SUCCESS\"\n| count\n| project Enriched = Count;\nlet s = toscalar(budgetSkipped | project Skipped);\nlet e = toscalar(enriched | project Enriched);\nlet rate = iff(s + e > 0, round(100.0 * toreal(s) / toreal(s + e), 1), 0.0);\nprint x=1 | project Metric = 'Assets Skipped (Budget)', Value = tostring(s)\n| union (print x=1 | project Metric = 'Assets Enriched', Value = tostring(e))\n| union (print x=1 | project Metric = 'Budget Skip Rate (%)', Value = tostring(rate))",
+              "size": 4,
+              "title": "Budget Impact (Selected Period)",
+              "noDataMessage": "No pipeline executions found in the selected time range.",
+              "queryType": 0,
+              "resourceType": "microsoft.insights/components",
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Metric",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "Value",
+                  "formatter": 1
+                },
+                "showBorder": true
+              }
+            },
+            "name": "constraints-impact-tiles"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let usage = traces\n| where timestamp {TimeRange}\n| where message == \"Onboarding budget: usage recorded\"\n| extend Day = startofday(timestamp)\n| summarize\n    Processed = count(),\n    DailyLimit = max(toint(customDimensions[\"dailyBudget\"]))\n  by Day;\nlet skipped = traces\n| where timestamp {TimeRange}\n| where customDimensions[\"event\"] == \"pipeline_completion\"\n| where tostring(customDimensions[\"status\"]) == \"SKIP_BUDGET\"\n| extend Day = startofday(timestamp)\n| summarize Skipped = count() by Day;\nusage\n| join kind=fullouter skipped on Day\n| extend Date = format_datetime(coalesce(Day, Day1), 'yyyy-MM-dd')\n| extend AssetsProcessed = coalesce(Processed, 0)\n| extend AssetsSkipped = coalesce(Skipped, 0)\n| extend Limit = coalesce(DailyLimit, 0)\n| extend Status = iff(AssetsSkipped > 0, \"Exhausted\", \"OK\")\n| project Date, AssetsProcessed, AssetsSkipped, Limit, Status\n| order by Date desc",
+              "size": 0,
+              "title": "Daily Budget Usage",
+              "noDataMessage": "No budget usage recorded in the selected time range. The budget may be disabled or no new assets were processed.",
+              "queryType": 0,
+              "resourceType": "microsoft.insights/components",
+              "visualization": "table",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Status",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "colors",
+                      "thresholdsGrid": [
+                        { "operator": "==", "thresholdValue": "OK", "representation": "green", "text": "{0}{1}" },
+                        { "operator": "==", "thresholdValue": "Exhausted", "representation": "redBright", "text": "{0}{1}" },
+                        { "operator": "Default", "representation": "lightBlue", "text": "{0}{1}" }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "AssetsSkipped",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "palette": "greenRed"
+                    }
+                  }
+                ]
+              }
+            },
+            "name": "constraints-daily-table"
+          }
+        ]
+      },
+      "name": "group-constraints"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
         "title": "Section 1: System Overview",
         "items": [
           {
