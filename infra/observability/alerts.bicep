@@ -121,7 +121,7 @@ resource alertPipelineInactive 'Microsoft.Insights/scheduledQueryRules@2023-03-1
     displayName: 'AIME — Pipeline Inactive (0 executions in 2h)'
     description: 'No pipeline_completion events detected in 2 hours. Orchestrator may be down or queue empty.'
     severity: 1
-    enabled: true
+    enabled: false
     evaluationFrequency: 'PT15M'
     windowSize: 'PT2H'
     scopes: [
